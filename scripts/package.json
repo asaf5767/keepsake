@@ -1,0 +1,22 @@
+{
+  "name": "keepsake-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scripts for the Keepsake skill: cull, pick and build a photo book from a folder of photos.",
+  "type": "module",
+  "scripts": {
+    "edit": "node edit.mjs",
+    "test": "node --test --test-concurrency=1 ../tests/composition.test.mjs ../tests/editor-layouts.test.mjs ../tests/editor-placement.test.mjs ../tests/editor-project.test.mjs ../tests/editor-server.test.mjs ../tests/editor-ui.test.mjs ../tests/render.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "exifreader": "^4.49.0",
+    "heic-convert": "^2.1.0",
+    "pdf-lib": "^1.17.1",
+    "puppeteer-core": "^25.13.0",
+    "sharp": "^0.35.5"
+  }
+}

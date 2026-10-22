@@ -1,0 +1,28 @@
+{
+  "about": "Answer key for the Keepsake test roll (keepsake-example/photos). IMG_1001-1050 are the real Lisbon photos; everything else was made from them to test the choosing.",
+  "reshoots": {
+    "IMG_1012.jpg": ["IMG_2001.jpg", "IMG_2002.jpg", "IMG_2003.jpg", "IMG_2004.jpg"],
+    "IMG_1021.jpg": ["IMG_2005.jpg", "IMG_2006.jpg", "IMG_2007.jpg", "IMG_2008.jpg"],
+    "IMG_1028.jpg": ["IMG_2009.jpg", "IMG_2010.jpg", "IMG_2011.jpg", "IMG_2012.jpg"],
+    "IMG_1037.jpg": ["IMG_2013.jpg", "IMG_2014.jpg", "IMG_2015.jpg", "IMG_2016.jpg"],
+    "IMG_1044.jpg": ["IMG_2017.jpg", "IMG_2018.jpg", "IMG_2019.jpg", "IMG_2020.jpg"]
+  },
+  "bursts": {
+    "IMG_1016.jpg": ["IMG_2021.jpg", "IMG_2022.jpg", "IMG_2023.jpg"],
+    "IMG_1031.jpg": ["IMG_2024.jpg", "IMG_2025.jpg", "IMG_2026.jpg"],
+    "IMG_1042.jpg": ["IMG_2027.jpg", "IMG_2028.jpg", "IMG_2029.jpg"]
+  },
+  "sameViewLater": {
+    "IMG_1007.jpg": "IMG_2030.jpg",
+    "IMG_1039.jpg": "IMG_2031.jpg",
+    "IMG_1001.jpg": "IMG_2032.jpg"
+  },
+  "edited": { "original": "IMG_1050.jpg", "edited": "IMG_E1050.jpg" },
+  "rated": "IMG_1032.jpg",
+  "whatsapp": { "original": "IMG_1032.jpg", "copy": "IMG-20250512-WA0007.jpg" },
+  "mustReject": [
+    "IMG_1063.jpg", "IMG_1064.jpg", "IMG_1065.jpg", "IMG_1066.jpg", "IMG_1067.jpg",
+    "IMG_1068.jpg", "IMG_1069.jpg", "IMG_1070.jpg",
+    "Screenshot_2025-05-10.png", "Screenshot_2025-05-11.png", "Screenshot_2025-05-12.png"
+  ]
+}

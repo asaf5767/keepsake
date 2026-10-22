@@ -1,0 +1,5 @@
+Place names come from GeoNames (https://www.geonames.org), licensed under
+Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/).
+Files: cities1000.tsv.gz (name, latitude, longitude, country code, population of
+places with more than 1,000 people) and countries.tsv, converted from the
+cities1000 and countryInfo dumps.
