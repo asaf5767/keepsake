@@ -72,11 +72,14 @@ Or paste the install message from the [simple guide](docs/start-here.md#step-4-i
 
 ## Use
 
-Ask your agent, for example:
+Ask your agent with a local folder, a `.zip` file, or a shared link from **Google Photos**, **Apple Photos (iCloud)**, or **Google Drive**:
 
+> Make a photo book from https://photos.app.goo.gl/...
+> Make a photo book from https://www.icloud.com/sharedalbum/#...
+> Make a photo book from https://drive.google.com/drive/folders/...
 > Make a photo book from D:\Photos\Lisbon 2025
 
-It asks a few questions (title, language, who matters most), runs the steps and shows you the result. Hebrew books are supported and read from right to left.
+It asks a few questions (title, language, who matters most), downloads or unpacks the photos if you gave a link or `.zip`, runs the steps and shows you the result. Hebrew books are supported and read from right to left.
 
 You can also run the scripts yourself, from the `keepsake` folder:
 

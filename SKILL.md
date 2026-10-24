@@ -15,10 +15,11 @@ Image budgets depend on the host. Review contact sheets first, then larger views
 
 ## Steps
 
-1. **Brief.** Get what the user hasn't said, one question at a time: the photo folder, the book title, the language, and who the important people are. Hebrew means `"direction": "rtl"`. For a folder that spans years, ask which year or dates the book covers.
-   *Done when* the folder exists and holds images.
+1. **Brief.** Get what the user hasn't said, one question at a time: the photo source (a local folder, a `.zip` file, or a shared link from Google Photos, Apple iCloud Shared Albums, or Google Drive), the book title, the language, and who the important people are. Hebrew means `"direction": "rtl"`. For a folder that spans years, ask which year or dates the book covers.
+   *Done when* the source is known.
 
-2. **Cull.** `node <skill>/scripts/cull.mjs "<folder>"` (the work folder is `<folder>-keepsake`, next to the photos; `--work <dir>` puts it elsewhere).
+2. **Cull.** `node <skill>/scripts/cull.mjs "<folder-or-zip-or-link>"` (the work folder defaults to `<folder>-keepsake` next to a local folder/ZIP, or `<source>-keepsake` for cloud links; `--work <dir>` puts it elsewhere).
+   - Accepts a local folder, a `.zip` archive, a **Google Photos** shared album link (`https://photos.app.goo.gl/...` or `https://photos.google.com/share/...`), an **Apple iCloud Shared Album** public link (`https://www.icloud.com/sharedalbum/#...`), or a **Google Drive** shared folder link (`https://drive.google.com/drive/folders/...`). Cloud links and ZIPs are automatically downloaded/unpacked into `<work>/photos` with original timestamps preserved.
    - `--recursive` if photos sit in subfolders. `--strict` for 500+ photos.
    - Place names come from a built-in offline list, so no location leaves the computer.
    - A small AI model (CLIP) reads what each photo shows, on this computer. The first run downloads it once (about 90 MB) into `<skill>/assets/model-cache`. Photos it is sure are information rather than moments (passports, tickets, screenshots, QR codes) are rejected; unsure ones get a `?` flag. `--no-ai` turns it off.

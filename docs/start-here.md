@@ -31,12 +31,14 @@ You don't need to know code. You copy, paste and click "Allow".
 
 ---
 
-## Step 2: Put the photos in one folder
+## Step 2: Prepare your photos (a link or a folder)
 
-Put all the photos from the trip (or the year) in one folder on your computer. For example: `Pictures\New York 2025`.
+You can give Keepsake your photos in four easy ways — **even without copying files from your phone**:
 
-- **Photos on your phone?** Move them to the computer with a cable, or download them from Google Photos or iCloud.
-- **Photos in Google Drive?** If you have the Google Drive app for desktop, the folder is already on your computer (usually on drive `G:`). Right-click it and choose **Available offline**, so the photos are really downloaded. You can also download the folder from the Drive website as a ZIP file and unzip it.
+1. **A Google Photos link (easiest!):** In Google Photos on your phone or the web, open an album (or select your trip photos) → click **Share** → **Create link**, and copy the link (`https://photos.app.goo.gl/...`).
+2. **An Apple Photos / iCloud link (iPhone / Mac):** In the Photos app, open a **Shared Album** → in the **People** tab, turn on **Public Website** and copy the link (`https://www.icloud.com/sharedalbum/#...`).
+3. **A Google Drive folder link:** Right-click the folder in Google Drive → **Share** → set access to **Anyone with the link**, and copy the link.
+4. **A folder or `.zip` file on your computer:** Put the photos in a folder (for example `Pictures\New York 2025`) or keep them as a single `.zip` download.
 
 ---
 
@@ -81,8 +83,12 @@ When the assistant says everything is ready, **start a new chat** (in the same f
 
 ## Step 5: Make an album
 
-In the new chat, write this with your own folder name:
+In the new chat, paste your shared album link (Google Photos, Apple iCloud, or Google Drive) or write your folder name:
 
+```text
+Make me a photo album from https://photos.app.goo.gl/...
+```
+or:
 ```text
 Make me a photo album from the folder "New York 2025"
 ```

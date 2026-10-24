@@ -4,14 +4,17 @@
 // "the owner cared" signals (ratings, edited copies); writes cull.json and
 // contact sheets of the rejects so they can be rescued.
 //
-// node cull.mjs <photo-folder> [--work <dir>] [--recursive] [--strict] [--no-ai]
-//   --work defaults to "<photo-folder>-keepsake" next to the photo folder.
+// node cull.mjs <photo-folder | photos.zip | shared-album-url> [--work <dir>] [--recursive] [--strict] [--no-ai]
+//   Accepts a local folder, a .zip archive, a Google Photos shared album link,
+//   an Apple iCloud Shared Album link, or a Google Drive shared folder link.
+//   --work defaults to "<photo-folder>-keepsake" (or "<source>-keepsake" for links).
 
 import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import ExifReader from "exifreader";
 import { findPlace } from "./places.mjs";
+import { resolvePhotoSource } from "./sources.mjs";
 import { embed, classify, pack } from "./vision.mjs";
 import { loadTaste, tasteMatch } from "./taste.mjs";
 
@@ -20,11 +23,12 @@ const flag = (n) => args.includes(n);
 const opt = (n, d) => (args.includes(n) ? args[args.indexOf(n) + 1] : d);
 const SOURCE = args.find((a, i) => !a.startsWith("--") && !["--work"].includes(args[i - 1]));
 if (!SOURCE) {
-  console.error("usage: node cull.mjs <photo-folder> [--work <dir>] [--recursive] [--strict] [--no-ai]");
+  console.error("usage: node cull.mjs <photo-folder | photos.zip | shared-album-url> [--work <dir>] [--recursive] [--strict] [--no-ai]");
   process.exit(1);
 }
-const SRC = path.resolve(SOURCE);
-const WORK = path.resolve(opt("--work", SRC + "-keepsake"));
+const resolvedSource = await resolvePhotoSource(SOURCE, { workDir: opt("--work", null) });
+const SRC = resolvedSource.srcDir;
+const WORK = resolvedSource.workDir;
 const STRICT = flag("--strict");
 
 const EXTS = new Set([".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".tif", ".tiff"]);
@@ -340,7 +344,8 @@ const clean = (r) => ({
   hash: r.hash?.toString(16).padStart(16, "0"), lay: r.lay, col: r.col, emb: r.emb, vision: r.vision,
 });
 await fs.writeFile(path.join(WORK, "cull.json"), JSON.stringify({
-  source: SRC, createdAt: new Date().toISOString(), strict: STRICT,
+  source: SRC, sourceInput: resolvedSource.sourceLabel, sourceKind: resolvedSource.kind,
+  createdAt: new Date().toISOString(), strict: STRICT,
   stats: { total: recs.length, kept: kept.length, rejected: rejected.length, reasons: reasonCounts },
   days, photos: [...kept, ...rejected].map(clean),
 }, null, 1));
