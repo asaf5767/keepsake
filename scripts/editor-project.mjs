@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { DECOR_MODES, GRAPHICS, WASHES, buildSpreadDecor } from "./editor-decor.mjs";
 
 export const PROJECT_KIND = "keepsake-editor-project";
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -122,12 +123,57 @@ export function createEditorProject({ album, layout, albumPath = "album.json" })
   if ((album.chapterStyle || "compact") !== "compact") throw new Error("The local editor supports the compact design.");
   const definitions = sceneDefinitions(album);
   const evidence = new Map((layout.scenes || []).map((scene) => [scene.id, scene]));
+  const spec = geometry(album);
+  const decorMode = DEFAULTS_DECOR(album.decor);
   const spreads = {};
-  for (const definition of definitions) {
+  for (const [spreadIndex, definition] of definitions.entries()) {
     const scene = evidence.get(definition.id);
     if (!scene?.frames?.length) {
       throw new Error(`Build evidence for "${definition.title}" is missing editable frames. Rebuild the album with this Keepsake version.`);
     }
+    const baseFrames = scene.frames.map((frame, index) => ({
+      id: frame.id || `${definition.id}-frame-${String(index + 1).padStart(2, "0")}`,
+      photo: frame.photo,
+      role: frame.role || (frame.photo === definition.mainPhoto ? "main" : "support"),
+      box: { ...frame.box },
+      fit: frame.fit || "safe",
+      focusX: frame.focusX ?? 50,
+      focusY: frame.focusY ?? 50,
+      zoom: frame.zoom ?? 1,
+      mat: frame.mat,
+      hidden: !!frame.hidden,
+    }));
+    const baseTexts = (scene.texts || []).map((text, index) => ({
+      id: text.id || `${definition.id}-text-${String(index + 1).padStart(2, "0")}`,
+      role: text.role || "note",
+      fontStyle: text.fontStyle || "sans",
+      text: text.text || "",
+      box: { ...text.box },
+      fontPt: text.fontPt || (text.role === "title" ? 17.9 : 8.5),
+      weight: text.weight || (text.role === "title" ? 700 : 500),
+      color: text.color || (text.role === "title" ? "#141414" : "#7c7c7c"),
+      align: text.align || "left",
+      hidden: !!text.hidden,
+    }));
+    const fallbackDecor = buildSpreadDecor({
+      sceneId: definition.id,
+      index: spreadIndex,
+      recipe: scene.recipe || "custom",
+      frames: baseFrames,
+      texts: baseTexts,
+      spec,
+      direction: album.direction || "ltr",
+      decor: decorMode,
+    });
+    const wash = scene.wash || fallbackDecor.wash;
+    const graphics = (scene.graphics || fallbackDecor.graphics || []).map((graphic, index) => ({
+      id: graphic.id || `${definition.id}-graphic-${String(index + 1).padStart(2, "0")}`,
+      kind: graphic.kind,
+      box: { ...graphic.box },
+      color: graphic.color || GRAPHICS[graphic.kind]?.defaultColor || "#3a322d",
+      hidden: !!graphic.hidden,
+    }));
+    const texts = scene.texts?.some((t) => t.role === "callout") ? baseTexts : fallbackDecor.texts;
     spreads[definition.id] = {
       id: definition.id,
       chapterId: definition.chapterId,
@@ -135,29 +181,17 @@ export function createEditorProject({ album, layout, albumPath = "album.json" })
       title: definition.title,
       kicker: definition.kicker,
       layout: scene.recipe || "custom",
+      wash: {
+        left: wash?.left || "none",
+        right: wash?.right || "none",
+      },
       reviewed: false,
-      frames: scene.frames.map((frame, index) => ({
-        id: frame.id || `${definition.id}-frame-${String(index + 1).padStart(2, "0")}`,
-        photo: frame.photo,
-        role: frame.role || (frame.photo === definition.mainPhoto ? "main" : "support"),
-        box: { ...frame.box },
-        fit: "safe",
-        focusX: 50,
-        focusY: 50,
-        zoom: 1,
-        hidden: false,
+      frames: fallbackDecor.frames.map((frame) => ({
+        ...frame,
+        mat: !!frame.mat,
       })),
-      texts: (scene.texts || []).map((text, index) => ({
-        id: text.id || `${definition.id}-text-${String(index + 1).padStart(2, "0")}`,
-        role: text.role || "note",
-        text: text.text || "",
-        box: { ...text.box },
-        fontPt: text.fontPt || (text.role === "title" ? 17.9 : 8.5),
-        weight: text.weight || (text.role === "title" ? 700 : 500),
-        color: text.color || (text.role === "title" ? "#141414" : "#7c7c7c"),
-        align: text.align || "left",
-        hidden: false,
-      })),
+      texts,
+      graphics,
     };
   }
   const now = new Date().toISOString();
@@ -176,14 +210,17 @@ export function createEditorProject({ album, layout, albumPath = "album.json" })
       title: album.title || "",
       subtitle: album.subtitle || "",
       theme: album.theme || "white",
+      decor: decorMode,
       font: album.font || (album.direction === "rtl" ? "Heebo" : "Montserrat"),
       direction: album.direction || "ltr",
-      geometry: geometry(album),
+      geometry: spec,
     },
     order: definitions.map((scene) => scene.id),
     spreads,
   };
 }
+
+const DEFAULTS_DECOR = (value) => DECOR_MODES.includes(value) ? value : "crafted";
 
 const assertBox = (box, width, height, label) => {
   if (!box || ![box.x, box.y, box.w, box.h].every(finite) || box.w <= 0 || box.h <= 0 ||
@@ -197,6 +234,7 @@ export function validateEditorProject(project, { album, photoCodes } = {}) {
   if (project.schemaVersion !== PROJECT_SCHEMA_VERSION) throw new Error(`Unsupported project schema ${project.schemaVersion}.`);
   if (!Number.isInteger(project.revision) || project.revision < 0) throw new Error("Project revision must be a nonnegative integer.");
   if (!project.book || !["white", "cream", "dark"].includes(project.book.theme)) throw new Error("Project theme is invalid.");
+  if (project.book.decor !== undefined && !DECOR_MODES.includes(project.book.decor)) throw new Error("Project decor mode is invalid.");
   if (!["Montserrat", "Heebo"].includes(project.book.font)) throw new Error("Project font must be Montserrat or Heebo.");
   if (!["ltr", "rtl"].includes(project.book.direction)) throw new Error("Project direction is invalid.");
   if (typeof project.book.title !== "string" || project.book.title.length > 500 ||
@@ -245,6 +283,13 @@ export function validateEditorProject(project, { album, photoCodes } = {}) {
         throw new Error(`Frame "${frame.id}" has an invalid focus.`);
       }
       if (!finite(frame.zoom) || frame.zoom < 1 || frame.zoom > 3) throw new Error(`Frame "${frame.id}" has an invalid zoom.`);
+      if (frame.mat !== undefined && typeof frame.mat !== "boolean") throw new Error(`Frame "${frame.id}" has an invalid mat border state.`);
+    }
+    if (spread.wash !== undefined) {
+      if (!spread.wash || typeof spread.wash !== "object" ||
+          !WASHES[spread.wash.left || "none"] || !WASHES[spread.wash.right || "none"]) {
+        throw new Error(`Spread "${id}" has an invalid page wash.`);
+      }
     }
     if (!Array.isArray(spread.texts)) throw new Error(`Spread "${id}" texts must be an array.`);
     for (const text of spread.texts) {
@@ -254,9 +299,21 @@ export function validateEditorProject(project, { album, photoCodes } = {}) {
       assertBox(text.box, pageWidth * 2, pageHeight, `Text "${text.id}"`);
       if (!finite(text.fontPt) || text.fontPt < 6 || text.fontPt > 144) throw new Error(`Text "${text.id}" has an invalid size.`);
       if (!finite(text.weight) || text.weight < 100 || text.weight > 900) throw new Error(`Text "${text.id}" has an invalid weight.`);
+      if (text.fontStyle !== undefined && !["sans", "script"].includes(text.fontStyle)) throw new Error(`Text "${text.id}" has an invalid fontStyle.`);
       if (!/^#[0-9a-f]{6}$/i.test(text.color)) throw new Error(`Text "${text.id}" has an invalid colour.`);
       if (!["left", "center", "right"].includes(text.align)) throw new Error(`Text "${text.id}" has an invalid alignment.`);
       if (typeof text.hidden !== "boolean") throw new Error(`Text "${text.id}" has an invalid hidden state.`);
+    }
+    if (spread.graphics !== undefined) {
+      if (!Array.isArray(spread.graphics)) throw new Error(`Spread "${id}" graphics must be an array.`);
+      for (const graphic of spread.graphics) {
+        if (!graphic.id || ids.has(graphic.id)) throw new Error(`Graphic ID "${graphic.id}" is missing or repeated.`);
+        ids.add(graphic.id);
+        if (!GRAPHICS[graphic.kind]) throw new Error(`Graphic "${graphic.id}" uses an unknown graphic kind.`);
+        assertBox(graphic.box, pageWidth * 2, pageHeight, `Graphic "${graphic.id}"`);
+        if (graphic.color !== undefined && !/^#[0-9a-f]{6}$/i.test(graphic.color)) throw new Error(`Graphic "${graphic.id}" has an invalid colour.`);
+        if (typeof graphic.hidden !== "boolean") throw new Error(`Graphic "${graphic.id}" has an invalid hidden state.`);
+      }
     }
   }
   return project;

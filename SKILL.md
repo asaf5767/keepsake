@@ -40,7 +40,7 @@ Image budgets depend on the host. Review contact sheets first, then larger views
 
    *Done when* every pick and frames sheet has been viewed and the draft reflects your swaps.
 
-5. **Story and design.** Copy the draft to `album.json` and finish it ([album-json.md](references/album-json.md)). Use the default `compact` design: white pages, large main photographs, thin-gap mosaics and small headings. Preserve the old output when revising a book.
+5. **Story and design.** Copy the draft to `album.json` and finish it ([album-json.md](references/album-json.md)). Use the default `compact` design with `crafted` decor: large main photographs, thin-gap mosaics, soft watercolor page washes on alternating pages, thin white photo borders on tinted pages, and subtle vector graphics/callouts (`"decor": "none"` disables washes and graphics). Preserve the old output when revising a book.
    - Split each chapter into `scenes`: one activity or short sequence per two-page spread, usually 3-5 photos. Choose exactly one clear, meaningful photograph as `role: "main"`; use related supporting photos. A sharp background does not make an out-of-focus person a good main photo.
    - Review each main photo at sufficient size to see eyes and focus. Mark the important region in `photoSettings[code].protect` using normalized `[x, y, width, height]`. Include every important face and the body/objects that must remain visible. Mark photos of people with `subject: "people"` even when the model misclassified them.
    - A protected subject must fit the crop; otherwise the renderer keeps the whole image. Use `fit: "contain"` for a photo that must remain completely uncropped. Prefer a better-fitting photo/layout over shrinking people into tiny boxes.

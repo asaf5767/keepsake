@@ -1,3 +1,11 @@
+import {
+  CALLOUT_PRESETS,
+  GRAPHICS,
+  WASHES,
+  buildSpreadDecor,
+  graphicSvgMarkup,
+  washSvgMarkup,
+} from "/editor-decor.mjs";
 import { makeEditorLayouts } from "/editor-layouts.mjs";
 import { placementWarnings, protectedBounds, resolveFramePlacement } from "/editor-placement.mjs";
 
@@ -54,9 +62,11 @@ const selectedLayer = () => {
   const spread = activeSpread();
   if (!spread || !ui.selected) return null;
   return spread.frames.find((frame) => frame.id === ui.selected) ||
-    spread.texts.find((text) => text.id === ui.selected) || null;
+    spread.texts.find((text) => text.id === ui.selected) ||
+    (spread.graphics || []).find((graphic) => graphic.id === ui.selected) || null;
 };
 const isFrame = (layer) => !!layer?.photo;
+const isGraphic = (layer) => !!layer?.kind && !!GRAPHICS[layer.kind];
 const currentTheme = () => themes[project.book.theme] || themes.white;
 
 function toast(message, error = false) {
@@ -130,7 +140,7 @@ function frameMarkup(frame, { miniature = false } = {}) {
       data-layer="${esc(frame.id)}" data-kind="frame" ${interaction}
       style="left:${pct(box.x, spreadWidth)};top:${pct(box.y, pageHeight)};width:${pct(box.w, spreadWidth)};height:${pct(box.h, pageHeight)}"
       title="${esc(warnings.join(" ") || `${frame.photo} · ${placement.reason}`)}">
-    <div class="photo-clip" style="left:${pct(rect.x - box.x, box.w)};top:${pct(rect.y - box.y, box.h)};width:${pct(rect.w, box.w)};height:${pct(rect.h, box.h)}">
+    <div class="photo-clip ${frame.mat ? "mat-frame" : ""}" style="left:${pct(rect.x - box.x, box.w)};top:${pct(rect.y - box.y, box.h)};width:${pct(rect.w, box.w)};height:${pct(rect.h, box.h)}">
       <img src="${photoUrl(frame.photo)}" alt="${esc(frame.photo)}" loading="${miniature ? "lazy" : "eager"}"
         style="left:${-crop.left / crop.width * 100}%;top:${-crop.top / crop.height * 100}%;width:${photo.width / crop.width * 100}%;height:${photo.height / crop.height * 100}%">
     </div>
@@ -143,20 +153,52 @@ function textMarkup(text, { miniature = false } = {}) {
   if (text.hidden) return "";
   const pageWidth = geometry().pageWidth, pageHeight = geometry().pageHeight, box = text.box;
   const interaction = miniature ? "" : `role="button" tabindex="0" aria-label="${esc(text.role)} text: ${esc(text.text)}"`;
-  return `<div class="layer text-layer ${!miniature && ui.selected === text.id ? "selected" : ""}"
+  const scriptCls = text.fontStyle === "script" ? "script-text" : "";
+  return `<div class="layer text-layer ${scriptCls} ${!miniature && ui.selected === text.id ? "selected" : ""}"
       data-layer="${esc(text.id)}" data-kind="text" ${interaction}
       dir="${textDirection(text.text)}"
       style="left:${pct(box.x, pageWidth * 2)};top:${pct(box.y, pageHeight)};width:${pct(box.w, pageWidth * 2)};height:${pct(box.h, pageHeight)};
       font-size:${(text.fontPt * 25.4 / 72 / (pageWidth * 2) * 100).toFixed(4)}cqw;font-weight:${text.weight || 500};color:${esc(text.color)};text-align:${text.align}">${esc(text.text)}${miniature ? "" : '<span class="resize-handle" aria-hidden="true"></span>'}</div>`;
 }
 
+function graphicMarkup(graphic, { miniature = false } = {}) {
+  if (graphic.hidden || !GRAPHICS[graphic.kind]) return "";
+  const pageWidth = geometry().pageWidth, pageHeight = geometry().pageHeight, box = graphic.box;
+  const interaction = miniature ? "" : `role="button" tabindex="0" aria-label="Graphic ${esc(GRAPHICS[graphic.kind].name)}"`;
+  return `<div class="layer graphic-layer ${!miniature && ui.selected === graphic.id ? "selected" : ""}"
+      data-layer="${esc(graphic.id)}" data-kind="graphic" ${interaction}
+      style="left:${pct(box.x, pageWidth * 2)};top:${pct(box.y, pageHeight)};width:${pct(box.w, pageWidth * 2)};height:${pct(box.h, pageHeight)}"
+      title="${esc(GRAPHICS[graphic.kind].name)}">${graphicSvgMarkup(graphic)}${miniature ? "" : '<span class="resize-handle" aria-hidden="true"></span>'}</div>`;
+}
+
+function washLayerMarkup(spread) {
+  const left = spread.wash?.left || "none";
+  const right = spread.wash?.right || "none";
+  return `${left !== "none" ? `<div class="wash-half left" data-wash-left="${esc(left)}">${washSvgMarkup(left, "left")}</div>` : ""}${right !== "none" ? `<div class="wash-half right" data-wash-right="${esc(right)}">${washSvgMarkup(right, "right")}</div>` : ""}`;
+}
+
 function previewSpread(option) {
   const spread = structuredClone(activeSpread());
   spread.frames = [...option.frames, ...spread.frames.filter((frame) => frame.hidden)];
+  spread.wash = option.wash ? { ...option.wash } : (spread.wash || { left: "none", right: "none" });
+  spread.graphics = structuredClone(option.graphics || []);
+  spread.texts = [
+    ...spread.texts.filter((text) => text.role !== "callout"),
+    ...structuredClone(option.callouts || []),
+  ];
   const title = spread.texts.find((text) => text.role === "title");
   const kicker = spread.texts.find((text) => text.role === "kicker");
-  if (title) title.box = { ...option.titleBox };
-  if (kicker) kicker.box = { ...option.kickerBox };
+  const defaultAlign = project.book.direction === "rtl" ? "right" : "left";
+  if (title) {
+    title.box = { ...option.titleBox };
+    title.align = option.key === "center-note-grid" ? "center" : defaultAlign;
+    title.fontPt = option.key === "center-note-grid" ? 12.5 : 17.9;
+    title.weight = option.key === "center-note-grid" ? 500 : 700;
+  }
+  if (kicker) {
+    kicker.box = { ...option.kickerBox };
+    kicker.align = option.key === "center-note-grid" ? "center" : defaultAlign;
+  }
   spread.layout = option.key;
   return spread;
 }
@@ -169,7 +211,9 @@ function currentCanvasSpread() {
 function spreadMarkup(spread, miniature = false) {
   const theme = currentTheme();
   return `<div class="spread-paper ${miniature ? "miniature" : ""}" style="background:${theme.paper};color:${theme.ink};font-family:'${project.book.font}',sans-serif">
+    ${washLayerMarkup(spread)}
     ${spread.frames.map((frame) => frameMarkup(frame, { miniature })).join("")}
+    ${(spread.graphics || []).map((graphic) => graphicMarkup(graphic, { miniature })).join("")}
     ${spread.texts.map((text) => textMarkup(text, { miniature })).join("")}
     <span class="fold"></span>
   </div>`;
@@ -249,14 +293,21 @@ function board() {
 function layoutOptions() {
   const spread = activeSpread();
   if (!spread) return [];
+  const spreadIndex = Math.max(0, project.order.indexOf(spread.id));
   const photos = spread.frames.filter((frame) => !frame.hidden).map((frame) => ({
     ...byPhoto.get(frame.photo),
     frameId: frame.id,
+    sceneId: spread.id,
     id: frame.photo,
     main: frame.role === "main",
     role: frame.role,
   }));
-  return makeEditorLayouts(photos, { ...geometry(), direction: project.book.direction });
+  return makeEditorLayouts(photos, {
+    ...geometry(),
+    direction: project.book.direction,
+    decor: project.book.decor || "crafted",
+    spreadIndex,
+  });
 }
 
 function layoutPanel() {
@@ -296,14 +347,41 @@ function numberField(label, field, value, min, max, step = 1) {
   return `<label>${label}<input type="number" data-layer-field="${field}" value="${Number(value).toFixed(1)}" min="${min}" max="${max}" step="${step}"></label>`;
 }
 
+function decorPanel() {
+  const spread = activeSpread();
+  const leftWash = spread.wash?.left || "none";
+  const rightWash = spread.wash?.right || "none";
+  return `<div class="panel-heading"><div class="eyebrow">Crafted touches</div><h2>Washes, graphics &amp; callouts</h2>
+    <p>Add soft watercolor page washes, subtle ornaments, seam stickers or short script words.</p></div>
+    <div class="field-grid">
+      <label>Left page wash<select data-wash-side="left">${Object.entries(WASHES).map(([key, item]) =>
+        `<option value="${key}" ${leftWash === key ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label>
+      <label>Right page wash<select data-wash-side="right">${Object.entries(WASHES).map(([key, item]) =>
+        `<option value="${key}" ${rightWash === key ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label>
+    </div>
+    <div class="eyebrow" style="margin:16px 0 8px">Add graphic or badge</div>
+    <div class="graphic-grid">${Object.entries(GRAPHICS).map(([key, item]) =>
+      `<button class="graphic-choice" data-action="add-graphic" data-graphic="${key}" title="${esc(item.name)}">
+        <span class="graphic-thumb">${item.svg(item.defaultColor)}</span>
+        <small>${esc(item.name)}</small>
+      </button>`).join("")}</div>
+    <div class="eyebrow" style="margin:18px 0 8px">Add optional callout</div>
+    <div class="callout-list">${CALLOUT_PRESETS.map((preset) =>
+      `<button class="callout-chip" data-action="add-callout" data-callout="${preset.key}">${esc(preset.label)}</button>`).join("")}</div>`;
+}
+
 function inspector() {
   const layer = selectedLayer();
   if (!layer) {
     const spread = activeSpread();
+    const visibleGraphics = (spread.graphics || []).filter((g) => !g.hidden).length;
+    const washText = [spread.wash?.left !== "none" ? `L: ${spread.wash?.left}` : null, spread.wash?.right !== "none" ? `R: ${spread.wash?.right}` : null]
+      .filter(Boolean).join(" · ") || "clean paper";
     return `<div class="panel-heading"><div class="eyebrow">${esc(spread.chapterTitle)}</div><h2>${esc(spread.title)}</h2>
-      <p>${spread.reviewed ? "This spread is marked reviewed." : "Select a photograph or words on the spread to edit them."}</p></div>
+      <p>${spread.reviewed ? "This spread is marked reviewed." : "Select a photograph, graphic or words on the spread to edit them."}</p></div>
       <button class="${spread.reviewed ? "" : "primary"} wide-button" data-action="review">${spread.reviewed ? "Mark as needing review" : "Mark spread reviewed"}</button>
-      <div class="spread-summary"><span>${spread.frames.filter((frame) => !frame.hidden).length} photographs</span><span>${esc(spread.layout)}</span></div>`;
+      <div class="spread-summary"><span>${spread.frames.filter((frame) => !frame.hidden).length} photos · ${visibleGraphics} graphics</span><span>${esc(washText)}</span></div>
+      <div class="button-row"><button class="wide-button" data-action="decor">Edit washes &amp; graphics</button></div>`;
   }
   const pageWidth = geometry().pageWidth, pageHeight = geometry().pageHeight;
   if (isFrame(layer)) {
@@ -314,6 +392,7 @@ function inspector() {
         ${numberField("Y · mm", "y", layer.box.y, 0, pageHeight - layer.box.h)}
         ${numberField("Width · mm", "w", layer.box.w, 10, pageWidth * 2 - layer.box.x)}
         ${numberField("Height · mm", "h", layer.box.h, 8, pageHeight - layer.box.y)}</div>
+      <label class="field"><input type="checkbox" data-layer-check="mat" ${layer.mat ? "checked" : ""}> White photo border</label>
       <label class="field">Framing<select data-layer-field="fit">
         <option value="safe" ${layer.fit === "safe" ? "selected" : ""}>Subject-aware</option>
         <option value="contain" ${layer.fit === "contain" ? "selected" : ""}>Keep the whole photo</option>
@@ -324,12 +403,28 @@ function inspector() {
         ${numberField("Focus Y · %", "focusY", layer.focusY, 0, 100)}</div>
       <div class="button-row"><button data-action="photos">Replace photo</button><button data-action="remove-layer">Remove</button></div>`;
   }
-  return `<div class="panel-heading"><div class="eyebrow">Words</div><h2>${esc(layer.role === "title" ? "Spread title" : layer.role === "kicker" ? "Date or chapter line" : "Text note")}</h2></div>
+  if (isGraphic(layer)) {
+    const entry = GRAPHICS[layer.kind];
+    return `<div class="panel-heading"><div class="eyebrow">Graphic</div><h2>${esc(entry?.name || layer.kind)}</h2>
+      <p>Drag on the spread to reposition, or swap the ornament below.</p></div>
+      <label class="field">Ornament<select data-layer-field="kind">${Object.entries(GRAPHICS).map(([key, item]) =>
+        `<option value="${key}" ${layer.kind === key ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label>
+      <label class="field">Colour<input type="color" data-layer-field="color" value="${esc(layer.color || entry?.defaultColor || "#3a322d")}"></label>
+      <div class="field-grid">${numberField("X · mm", "x", layer.box.x, 0, pageWidth * 2 - layer.box.w)}
+        ${numberField("Y · mm", "y", layer.box.y, 0, pageHeight - layer.box.h)}
+        ${numberField("Width · mm", "w", layer.box.w, 8, pageWidth * 2 - layer.box.x)}
+        ${numberField("Height · mm", "h", layer.box.h, 6, pageHeight - layer.box.y)}</div>
+      <button data-action="remove-layer">Remove graphic</button>`;
+  }
+  return `<div class="panel-heading"><div class="eyebrow">Words</div><h2>${esc(layer.role === "title" ? "Spread title" : layer.role === "kicker" ? "Date or chapter line" : layer.role === "callout" ? "Callout" : "Text note")}</h2></div>
     <label class="field">Wording<textarea id="wording">${esc(layer.text)}</textarea></label>
     <button class="primary wide-button" data-action="apply-text">Apply wording</button>
     <div class="field-grid">${numberField("Size · pt", "fontPt", layer.fontPt, 6, 144)}
       <label>Colour<input type="color" data-layer-field="color" value="${esc(layer.color)}"></label></div>
-    <label class="field">Alignment<select data-layer-field="align"><option ${layer.align === "left" ? "selected" : ""}>left</option><option ${layer.align === "center" ? "selected" : ""}>center</option><option ${layer.align === "right" ? "selected" : ""}>right</option></select></label>
+    <div class="field-grid">
+      <label>Style<select data-layer-field="fontStyle"><option value="sans" ${(layer.fontStyle || "sans") === "sans" ? "selected" : ""}>Clean sans</option><option value="script" ${layer.fontStyle === "script" ? "selected" : ""}>Handwritten script</option></select></label>
+      <label>Alignment<select data-layer-field="align"><option ${layer.align === "left" ? "selected" : ""}>left</option><option ${layer.align === "center" ? "selected" : ""}>center</option><option ${layer.align === "right" ? "selected" : ""}>right</option></select></label>
+    </div>
     <div class="field-grid">${numberField("X · mm", "x", layer.box.x, 0, pageWidth * 2 - layer.box.w)}
       ${numberField("Y · mm", "y", layer.box.y, 0, pageHeight - layer.box.h)}
       ${numberField("Width · mm", "w", layer.box.w, 10, pageWidth * 2 - layer.box.x)}
@@ -338,18 +433,24 @@ function inspector() {
 }
 
 function stylePanel() {
-  return `<div class="panel-heading"><div class="eyebrow">Whole book</div><h2>Paper and type</h2>
+  const decorMode = project.book.decor || "crafted";
+  return `<div class="panel-heading"><div class="eyebrow">Whole book</div><h2>Paper, type &amp; decor</h2>
     <p>These settings also update the existing cover, opening and closing templates when you export.</p></div>
     <label class="field">Book title<input data-book-field="title" value="${esc(project.book.title)}"></label>
     <label class="field">Subtitle<input data-book-field="subtitle" value="${esc(project.book.subtitle)}"></label>
     <div class="paper-row">${Object.entries(themes).map(([key, theme]) =>
       `<button class="paper ${project.book.theme === key ? "active" : ""}" data-action="theme" data-theme="${key}" title="${theme.name}"><span style="background:${theme.paper}"></span>${theme.name}</button>`).join("")}</div>
-    <label class="field">Typeface<select data-book-field="font"><option ${project.book.font === "Montserrat" ? "selected" : ""}>Montserrat</option><option ${project.book.font === "Heebo" ? "selected" : ""}>Heebo</option></select></label>`;
+    <label class="field">Typeface<select data-book-field="font"><option ${project.book.font === "Montserrat" ? "selected" : ""}>Montserrat</option><option ${project.book.font === "Heebo" ? "selected" : ""}>Heebo</option></select></label>
+    <label class="field">Album decor style<select data-action-select="book-decor">
+      <option value="crafted" ${decorMode === "crafted" ? "selected" : ""}>Crafted washes &amp; subtle graphics</option>
+      <option value="none" ${decorMode === "none" ? "selected" : ""}>Minimal clean paper only</option>
+    </select></label>`;
 }
 
 function sidePanel() {
   if (ui.panel === "layouts") return layoutPanel();
   if (ui.panel === "photos") return photoLibrary();
+  if (ui.panel === "decor") return decorPanel();
   if (ui.panel === "style") return stylePanel();
   return inspector();
 }
@@ -363,6 +464,7 @@ function editor() {
       <div><strong>${esc(spread.title)}</strong><small>${esc(spread.chapterTitle)} · ${dirty ? "working copy" : `saved revision ${project.revision}`}</small></div>
       <button class="${ui.panel === "layouts" ? "active" : ""}" data-action="layouts">Layouts</button>
       <button class="${ui.panel === "photos" ? "active" : ""}" data-action="photos">Photos</button>
+      <button class="${ui.panel === "decor" ? "active" : ""}" data-action="decor">Decor</button>
       <button data-action="add-text">+ Text</button>
       <button class="${ui.panel === "style" ? "active" : ""}" data-action="style">Book style</button>
       <button class="${ui.guides ? "active" : ""}" data-action="guides">Subject guides</button>
@@ -433,10 +535,25 @@ function applyLayout() {
   remember(() => {
     const spread = activeSpread();
     spread.frames = [...option.frames, ...spread.frames.filter((frame) => frame.hidden)];
+    spread.wash = option.wash ? { ...option.wash } : (spread.wash || { left: "none", right: "none" });
+    spread.graphics = structuredClone(option.graphics || []);
+    spread.texts = [
+      ...spread.texts.filter((text) => text.role !== "callout"),
+      ...structuredClone(option.callouts || []),
+    ];
     const title = spread.texts.find((text) => text.role === "title");
     const kicker = spread.texts.find((text) => text.role === "kicker");
-    if (title) title.box = { ...option.titleBox };
-    if (kicker) kicker.box = { ...option.kickerBox };
+    const defaultAlign = project.book.direction === "rtl" ? "right" : "left";
+    if (title) {
+      title.box = { ...option.titleBox };
+      title.align = option.key === "center-note-grid" ? "center" : defaultAlign;
+      title.fontPt = option.key === "center-note-grid" ? 12.5 : 17.9;
+      title.weight = option.key === "center-note-grid" ? 500 : 700;
+    }
+    if (kicker) {
+      kicker.box = { ...option.kickerBox };
+      kicker.align = option.key === "center-note-grid" ? "center" : defaultAlign;
+    }
     spread.layout = option.key;
     ui.previewLayout = null;
     ui.selected = null;
@@ -486,9 +603,78 @@ function action(name, element) {
   }
   if (name === "layouts") { ui.panel = "layouts"; ui.previewLayout = null; return render(); }
   if (name === "photos") { ui.panel = "photos"; return render(); }
+  if (name === "decor") { ui.panel = "decor"; return render(); }
   if (name === "style") {
     if (ui.view === "board") { ui.view = "editor"; ui.active = project.order[0]; }
     ui.panel = "style"; ui.selected = null; return render();
+  }
+  if (name === "add-graphic") {
+    const kind = element.dataset.graphic;
+    const entry = GRAPHICS[kind];
+    if (!entry) return;
+    return remember(() => {
+      const spread = activeSpread(), g = geometry();
+      spread.graphics = spread.graphics || [];
+      const id = `${spread.id}-graphic-${crypto.randomUUID().slice(0, 8)}`;
+      const w = entry.defaultSize.w, h = entry.defaultSize.h;
+      spread.graphics.push({
+        id,
+        kind,
+        box: {
+          x: Math.round(g.pageWidth + (g.pageWidth - w) / 2),
+          y: Math.round(g.pageHeight - g.bleed - g.margin - h - 18),
+          w,
+          h,
+        },
+        color: entry.defaultColor,
+        hidden: false,
+      });
+      ui.selected = id;
+      ui.panel = "inspect";
+    });
+  }
+  if (name === "add-callout") {
+    const preset = CALLOUT_PRESETS.find((item) => item.key === element.dataset.callout);
+    if (!preset) return;
+    return remember(() => {
+      const spread = activeSpread(), g = geometry();
+      spread.graphics = spread.graphics || [];
+      const textId = `${spread.id}-callout-${crypto.randomUUID().slice(0, 8)}`;
+      const graphicId = `${spread.id}-graphic-${crypto.randomUUID().slice(0, 8)}`;
+      const tw = 64, th = 16;
+      const tx = Math.round(g.pageWidth + (g.pageWidth - tw) / 2);
+      const ty = Math.round(g.pageHeight - g.bleed - g.margin - 44);
+      spread.texts.push({
+        id: textId,
+        role: "callout",
+        fontStyle: preset.fontStyle || "script",
+        text: preset.text,
+        box: { x: tx, y: ty, w: tw, h: th },
+        fontPt: preset.fontStyle === "script" ? 14 : 12,
+        weight: preset.fontStyle === "script" ? 400 : 500,
+        color: currentTheme().ink,
+        align: "center",
+        hidden: false,
+      });
+      if (preset.graphic && GRAPHICS[preset.graphic]) {
+        const entry = GRAPHICS[preset.graphic];
+        const gw = entry.defaultSize.w, gh = entry.defaultSize.h;
+        spread.graphics.push({
+          id: graphicId,
+          kind: preset.graphic,
+          box: {
+            x: Math.round(tx + (tw - gw) / 2),
+            y: Math.round(ty + th + 2),
+            w: gw,
+            h: gh,
+          },
+          color: entry.defaultColor,
+          hidden: false,
+        });
+      }
+      ui.selected = textId;
+      ui.panel = "inspect";
+    });
   }
   if (name === "guides") { ui.guides = !ui.guides; return render(); }
   if (name === "preview-layout") { ui.previewLayout = element.dataset.layout; return render(); }
@@ -556,6 +742,51 @@ app.addEventListener("click", (event) => {
 
 app.addEventListener("change", (event) => {
   const element = event.target;
+  if (element.dataset.layerCheck) {
+    const layer = selectedLayer();
+    if (!layer) return;
+    return remember(() => { layer[element.dataset.layerCheck] = element.checked; });
+  }
+  if (element.dataset.washSide) {
+    const side = element.dataset.washSide;
+    const value = element.value;
+    return remember(() => {
+      const spread = activeSpread();
+      spread.wash = spread.wash || { left: "none", right: "none" };
+      spread.wash[side] = value;
+      const g = geometry();
+      for (const frame of spread.frames) {
+        const onLeft = frame.box.x + frame.box.w / 2 < g.pageWidth;
+        if ((side === "left" && onLeft) || (side === "right" && !onLeft)) {
+          frame.mat = value !== "none";
+        }
+      }
+    });
+  }
+  if (element.dataset.actionSelect === "book-decor") {
+    const mode = element.value;
+    return remember(() => {
+      project.book.decor = mode;
+      const spec = geometry();
+      project.order.forEach((id, index) => {
+        const spread = project.spreads[id];
+        const decorated = buildSpreadDecor({
+          sceneId: id,
+          index,
+          recipe: spread.layout,
+          frames: spread.frames.map(({ mat, ...rest }) => rest),
+          texts: spread.texts.filter((t) => t.role !== "callout"),
+          spec,
+          direction: project.book.direction,
+          decor: mode,
+        });
+        spread.wash = decorated.wash;
+        spread.frames = decorated.frames;
+        spread.texts = decorated.texts;
+        spread.graphics = decorated.graphics;
+      });
+    }, { invalidateReview: "all" });
+  }
   if (element.dataset.layerField) return mutateLayer(element.dataset.layerField, element.value);
   if (element.dataset.bookField) {
     const field = element.dataset.bookField;
@@ -615,7 +846,8 @@ function attachCanvas() {
     if (!element) { ui.selected = null; render(); return; }
     event.preventDefault();
     const layer = activeSpread().frames.find((frame) => frame.id === element.dataset.layer) ||
-      activeSpread().texts.find((text) => text.id === element.dataset.layer);
+      activeSpread().texts.find((text) => text.id === element.dataset.layer) ||
+      (activeSpread().graphics || []).find((graphic) => graphic.id === element.dataset.layer);
     ui.selected = layer.id;
     const rect = canvas.getBoundingClientRect();
     pointer = {

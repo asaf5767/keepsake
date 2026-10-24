@@ -20,8 +20,8 @@ your photos ─► 1. Clean out ─► 2. Pick ─► 3. Review ─► 4. Design
 1. **Clean out** (`cull.mjs`) reads every photo. It removes blurry, dark and washed-out photos, screenshots, receipts and copies. It reads the date, the place and your own choices (star ratings, edited copies) from the photo files.
 2. **Pick** (`pick.mjs`) groups shots of the same moment and keeps the best one. It splits the photos into chapters by day and place, and picks a varied set. It writes a first draft of the album and a few *decision sheets*: pictures that show many small photos at once, with codes.
 3. **Review** — your AI agent looks at the decision sheets, not at every photo. It makes the calls a script can't: no street signs or strangers, the frame where eyes are open, the people who matter to you.
-4. **Design** (`build.mjs`) makes photo-first spreads: a strong main photograph and related supporting images, with thin gaps, small headings and white backgrounds. Reviewed subject rectangles prevent a sign or background from displacing the family in a crop. There are no mandatory divider pages or tiny photo strips.
-5. **Edit (optional)** (`edit.mjs`) opens a local Storyboard. Reorder scenes, try safe layouts with the real photos, replace a photo, edit words, move or resize objects, save, reopen and export through the same renderer.
+4. **Design** (`build.mjs`) makes crafted photo-first spreads: a strong main photograph and related supporting images, soft watercolor page washes, thin white photo borders on tinted pages, and subtle vector graphics (scroll flourishes, arrows, botanical sprigs, seam badges and optional script callouts). Reviewed subject rectangles prevent a sign or background from displacing the family in a crop.
+5. **Edit (optional)** (`edit.mjs`) opens a local Storyboard. Reorder scenes, try safe layouts (including framed portrait + flourish, overlapping inset, and center-note mosaic), replace a photo, change page washes, add or move graphics/stickers, edit words, save, reopen and export through the same renderer.
 6. **Check** — the agent looks at every page and fixes bad crops or weak photos.
 
 ## How it chooses like a person
@@ -140,6 +140,7 @@ The scripts process photos locally and do not upload photos or GPS coordinates. 
 | `scripts/editor-project.mjs` | Versioned saved-project contract and atomic revisions |
 | `scripts/editor-server.mjs` | Tokenized loopback server for one work folder |
 | `scripts/editor-layouts.mjs` | Photo-aware whole-spread layout choices |
+| `scripts/editor-decor.mjs` | Watercolor page washes, vector graphics, badges and callout presets |
 | `scripts/editor-placement.mjs` | Crop geometry shared by editor and renderer |
 | `scripts/composition.mjs` | Shared subject-protected crop geometry for scoring and rendering |
 | `editor/` | Storyboard browser UI |

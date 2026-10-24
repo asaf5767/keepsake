@@ -80,6 +80,10 @@ test("Storyboard edits persist and export through the browser workflow", { timeo
     await page.locator("#wording").fill("Saved in the Keepsake project");
     await page.click('[data-action="apply-text"]');
 
+    await page.click('[data-action="decor"]');
+    await page.select('[data-wash-side="left"]', "rose");
+    await page.click('[data-action="add-graphic"][data-graphic="boho-arrow"]');
+
     await page.click(frameSelector);
     const beforeDrag = await page.evaluate(() => {
       const project = window.keepsakeEditor.getProject();
@@ -131,6 +135,8 @@ test("Storyboard edits persist and export through the browser workflow", { timeo
     assert.equal(saved.book.font, "Heebo");
     assert.ok(saved.spreads[firstId].frames.some((item) => item.photo === "P006"));
     assert.ok(saved.spreads[firstId].texts.some((text) => text.text === "Saved in the Keepsake project"));
+    assert.equal(saved.spreads[firstId].wash.left, "rose");
+    assert.ok(saved.spreads[firstId].graphics.some((graphic) => graphic.kind === "boho-arrow"));
 
     await page.reload({ waitUntil: "networkidle0" });
     await page.waitForFunction(() => !!window.keepsakeEditor);
@@ -148,6 +154,11 @@ test("Storyboard edits persist and export through the browser workflow", { timeo
     assert.equal(layout.editorProject.revision, 2);
     assert.equal(layout.scenes[1].id, firstId);
     assert.ok(layout.scenes[1].texts.some((text) => text.text === "Saved in the Keepsake project"));
+    assert.equal(layout.scenes[1].wash.left, "rose");
+    assert.ok(layout.scenes[1].graphics.some((graphic) => graphic.kind === "boho-arrow"));
+    const interiorHtml = await fs.readFile(path.join(root, "book", "interior.html"), "utf8");
+    assert.match(interiorHtml, /data-wash="rose"/);
+    assert.match(interiorHtml, /data-graphic-kind="boho-arrow"/);
     assert.equal(errors.length, 0, errors.join("\n"));
   } finally {
     if (browser) await browser.close();

@@ -190,6 +190,7 @@ export async function startEditorServer({
     ["/app.js", [path.join(editorRoot, "app.js"), "text/javascript; charset=utf-8"]],
     ["/app.css", [path.join(editorRoot, "app.css"), "text/css; charset=utf-8"]],
     ["/composition.mjs", [path.join(here, "composition.mjs"), "text/javascript; charset=utf-8"]],
+    ["/editor-decor.mjs", [path.join(here, "editor-decor.mjs"), "text/javascript; charset=utf-8"]],
     ["/editor-placement.mjs", [path.join(here, "editor-placement.mjs"), "text/javascript; charset=utf-8"]],
     ["/editor-layouts.mjs", [path.join(here, "editor-layouts.mjs"), "text/javascript; charset=utf-8"]],
     ["/font/Montserrat.ttf", [path.join(root, "assets", "fonts", "Montserrat.ttf"), "font/ttf"]],

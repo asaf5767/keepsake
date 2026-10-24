@@ -13,13 +13,20 @@ const photos = [
 test("layout families keep every stable frame once and stay inside the spread", () => {
   const options = makeEditorLayouts(photos, spec);
   assert.deepEqual(options.map((option) => option.key),
-    ["portrait-lead", "reverse-lead", "wide-story", "portrait-row", "story-mosaic"]);
+    ["portrait-lead", "reverse-lead", "framed-haven", "overlap-story", "center-note-grid", "wide-story", "portrait-row", "story-mosaic"]);
   for (const option of options.filter((candidate) => candidate.available)) {
     assert.deepEqual(new Set(option.frames.map((frame) => frame.id)), new Set(photos.map((photo) => photo.frameId)));
+    assert.ok(option.wash && typeof option.wash.left === "string" && typeof option.wash.right === "string");
+    assert.ok(Array.isArray(option.graphics));
     for (const frame of option.frames) {
       assert.ok(frame.box.x >= 0 && frame.box.y >= 0);
       assert.ok(frame.box.x + frame.box.w <= spec.pageWidth * 2);
       assert.ok(frame.box.y + frame.box.h <= spec.pageHeight);
+    }
+    for (const graphic of option.graphics) {
+      assert.ok(graphic.box.x >= 0 && graphic.box.y >= 0);
+      assert.ok(graphic.box.x + graphic.box.w <= spec.pageWidth * 2);
+      assert.ok(graphic.box.y + graphic.box.h <= spec.pageHeight);
     }
   }
 });
@@ -53,4 +60,17 @@ test("the date line and the spread title never overlap", () => {
     const overlapY = k.y < t.y + t.h && t.y < k.y + k.h;
     assert.equal(overlapX && overlapY, false, option.key);
   }
+});
+
+test("crafted layouts attach watercolor washes, matted frames and flourishes", () => {
+  const options = makeEditorLayouts(photos, spec);
+  const framed = options.find((option) => option.key === "framed-haven");
+  assert.ok(framed.available);
+  assert.notEqual(framed.wash.right, "none");
+  assert.equal(framed.frames[0].mat, true);
+  assert.ok(framed.graphics.some((g) => g.kind === "flourish-heart"));
+
+  const center = options.find((option) => option.key === "center-note-grid");
+  assert.ok(center.available);
+  assert.ok(center.graphics.some((g) => g.kind === "flourish-scroll"));
 });

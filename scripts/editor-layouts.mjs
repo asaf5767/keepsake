@@ -1,4 +1,5 @@
 import { imagePlacement } from "./composition.mjs";
+import { buildSpreadDecor } from "./editor-decor.mjs";
 import { photoItem, placementWarnings } from "./editor-placement.mjs";
 
 const box = (x, y, w, h) => ({ x, y, w, h });
@@ -56,6 +57,73 @@ function templates(count, spec) {
     ...grid({ ...right, y: outer, h: fullLeft.h }, count - 2, gap),
   ];
 
+  // Framed solo portrait on one page (with room for top/bottom flourishes) + mosaic on facing page (ref 190621)
+  const framedSolo = box(right.x + 22, outer + 36, right.w - 44, pageHeight - 2 * outer - 72);
+  const framedHavenBoxes = [
+    framedSolo,
+    ...grid(left, count - 1, gap),
+  ];
+
+  // Layered inset with calm pocket for script callout + blossom/arrow (ref 190607, 190625, sheet-2 top-left)
+  const fullRight = box(right.x, outer, right.w, pageHeight - 2 * outer);
+  const tallLeft = box(left.x, top, left.w * 0.54, left.h);
+  const overlapInset = box(left.x + left.w * 0.44, top + left.h * 0.04, left.w * 0.56, left.h * 0.42);
+  const rightCount = Math.max(1, count - 2);
+  const overlapRight = rightCount === 2
+    ? [
+      box(fullRight.x + 16, outer, fullRight.w - 32, (fullRight.h - gap) / 2),
+      box(fullRight.x + 16, outer + (fullRight.h + gap) / 2, fullRight.w - 32, (fullRight.h - gap) / 2),
+    ]
+    : grid(fullRight, rightCount, gap);
+  const overlapBoxes = [
+    tallLeft,
+    ...overlapRight,
+    overlapInset,
+  ];
+
+  // Mosaic with a note/flourish tile on the right page (ref sheet-2 top-right, sheet-3 top-left)
+  const rowH = (fullRight.h - 2 * gap) / 3;
+  const colW = (fullRight.w - 2 * gap) / 3;
+  const ringCount = Math.max(1, count - 1);
+  const bentoLeftW = (fullRight.w - gap) * 0.56;
+  const bentoRightW = fullRight.w - gap - bentoLeftW;
+  const bentoTopH = (fullRight.h - gap) * 0.42;
+  const centerNoteTile = ringCount === 3
+    ? box(fullRight.x + bentoLeftW + gap, outer, bentoRightW, bentoTopH)
+    : box(fullRight.x + colW + gap, outer + rowH + gap, colW, rowH);
+  const ringByCount = {
+    3: [
+      box(fullRight.x, outer, bentoLeftW, (fullRight.h - gap) * 0.54),
+      box(fullRight.x, outer + (fullRight.h - gap) * 0.54 + gap, bentoLeftW, (fullRight.h - gap) * 0.46),
+      box(fullRight.x + bentoLeftW + gap, outer + bentoTopH + gap, bentoRightW, fullRight.h - gap - bentoTopH),
+    ],
+    4: [
+      box(fullRight.x, outer, colW * 2 + gap, rowH),
+      box(fullRight.x + 2 * (colW + gap), outer, colW, rowH * 2 + gap),
+      box(fullRight.x, outer + rowH + gap, colW, rowH * 2 + gap),
+      box(fullRight.x + colW + gap, outer + 2 * (rowH + gap), colW * 2 + gap, rowH),
+    ],
+    5: [
+      box(fullRight.x, outer, colW * 2 + gap, rowH),
+      box(fullRight.x + 2 * (colW + gap), outer, colW, rowH),
+      box(fullRight.x + 2 * (colW + gap), outer + rowH + gap, colW, rowH),
+      box(fullRight.x, outer + rowH + gap, colW, rowH * 2 + gap),
+      box(fullRight.x + colW + gap, outer + 2 * (rowH + gap), colW * 2 + gap, rowH),
+    ],
+    6: [
+      box(fullRight.x, outer, colW * 2 + gap, rowH),
+      box(fullRight.x + 2 * (colW + gap), outer, colW, rowH),
+      box(fullRight.x, outer + rowH + gap, colW, rowH),
+      box(fullRight.x + 2 * (colW + gap), outer + rowH + gap, colW, rowH),
+      box(fullRight.x, outer + 2 * (rowH + gap), colW, rowH),
+      box(fullRight.x + colW + gap, outer + 2 * (rowH + gap), colW * 2 + gap, rowH),
+    ],
+  };
+  const centerGridBoxes = [
+    fullLeft,
+    ...(ringByCount[ringCount] || ringByCount[6].slice(0, ringCount)),
+  ];
+
   const result = [
     {
       key: "portrait-lead",
@@ -73,6 +141,31 @@ function templates(count, spec) {
       titleBox: headingTitle,
       kickerBox: headingKicker,
     },
+    {
+      key: "framed-haven",
+      name: "Framed portrait & flourish",
+      description: "A white-bordered portrait on a watercolor wash with top and bottom flourishes.",
+      boxes: framedHavenBoxes,
+      titleBox: headingTitle,
+      kickerBox: headingKicker,
+    },
+    ...(count >= 3 ? [{
+      key: "overlap-story",
+      name: "Layered inset & motif",
+      description: "An overlapping white-bordered inset photo with a calm pocket for a script word and flower.",
+      boxes: overlapBoxes,
+      titleBox: headingTitle,
+      kickerBox: headingKicker,
+    }] : []),
+    ...(count >= 4 && count <= 7 ? [{
+      key: "center-note-grid",
+      name: "Mosaic with center note",
+      description: "A full-page hero facing a photo mosaic built around a central note and scroll flourish.",
+      boxes: centerGridBoxes,
+      titleBox: box(centerNoteTile.x + 4, +(centerNoteTile.y + centerNoteTile.h / 2 - 9).toFixed(2), centerNoteTile.w - 8, 16),
+      kickerBox: box(centerNoteTile.x + 4, +(centerNoteTile.y + centerNoteTile.h / 2 - 17).toFixed(2), centerNoteTile.w - 8, 6),
+      titleTile: true,
+    }] : []),
     {
       key: "wide-story",
       name: "Wide story",
@@ -181,11 +274,27 @@ export function makeEditorLayouts(photos, spec) {
     const coverage = frames.reduce((sum, frame) => sum + area(frame.box), 0) /
       (2 * spec.pageWidth * spec.pageHeight);
     const available = !!valid && (!template.crossFold || coverage >= 0.6);
+    const decor = buildSpreadDecor({
+      sceneId: photos[0]?.sceneId || "preview",
+      index: spec.spreadIndex ?? 1,
+      recipe: template.key,
+      frames,
+      texts: [
+        { id: "preview-kicker", role: "kicker", text: "", box: { ...template.kickerBox }, hidden: false },
+        { id: "preview-title", role: "title", text: "", box: { ...template.titleBox }, hidden: false },
+      ],
+      spec,
+      direction: spec.direction || "ltr",
+      decor: spec.decor || "crafted",
+    });
     return {
       key: template.key,
       name: template.name,
       description: template.description,
-      frames,
+      frames: decor.frames,
+      wash: decor.wash,
+      graphics: decor.graphics,
+      callouts: decor.texts.filter((t) => t.role === "callout"),
       titleBox: template.titleBox,
       kickerBox: template.kickerBox,
       titleTile: !!template.titleTile,

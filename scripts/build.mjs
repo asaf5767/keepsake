@@ -14,6 +14,7 @@ import puppeteer from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 import { createHash } from "node:crypto";
 import { imagePlacement, placementCost, validateProtection, focusPoint } from "./composition.mjs";
+import { DECOR_MODES, GRAPHICS, buildSpreadDecor, graphicSvgMarkup, washSvgMarkup } from "./editor-decor.mjs";
 import { albumFingerprint, loadEditorProject } from "./editor-project.mjs";
 import { placementWarnings, resolveFramePlacement } from "./editor-placement.mjs";
 
@@ -38,8 +39,10 @@ if (editorProject) {
   album.title = editorProject.book.title;
   album.subtitle = editorProject.book.subtitle;
   album.theme = editorProject.book.theme;
+  album.decor = editorProject.book.decor || album.decor || "crafted";
   album.font = editorProject.book.font;
 }
+const DECOR_MODE = DECOR_MODES.includes(album.decor) ? album.decor : "crafted";
 
 // ─── book geometry (mm) ─────────────────────────────────────────────────────
 
@@ -95,7 +98,8 @@ function frameBox(no) {
   const left = physLeft(no);
   const l = left ? FRAME_SIDE : FRAME_SIDE + IE, r = left ? FRAME_SIDE + IE : FRAME_SIDE;
   const header = PHOTO_FIRST ? 18 : 0;
-  return { x: B + l, y: B + FRAME_TOP + header, w: TW - l - r, h: TH - 2 * FRAME_TOP - header };
+  const bottomCalm = PHOTO_FIRST && DECOR_MODE === "crafted" ? Math.min(46, TH * 0.155) : 0;
+  return { x: B + l, y: B + FRAME_TOP + header, w: TW - l - r, h: TH - 2 * FRAME_TOP - header - bottomCalm };
 }
 const CANON = contentBox(2);
 const CANON_FRAME = frameBox(2);
@@ -533,6 +537,8 @@ function pickOpener(its) {
 }
 function planBook(scale) {
   if (PHOTO_FIRST) {
+    const usage = new Map();
+    let prev = null;
     return chapters.map((chapter, ci) => {
       const spreads = [];
       const scenes = chapter.scenes || [{ title: chapter.title, items: chapter.items }];
@@ -541,11 +547,16 @@ function planBook(scale) {
         if (chapter.scenes) {
           for (const [rid, recipe] of Object.entries(COMPACT_RECIPES)) {
             const result = evalSpread(recipe.pages, scene.items);
-            if (result && (!selected || result.cost + recipe.bias < selected.cost)) {
-              selected = { ...result, rid, cost: result.cost + recipe.bias };
+            if (!result) continue;
+            const repeatCost = (prev === rid ? 0.22 : 0) + 0.06 * (usage.get(rid) || 0);
+            const totalCost = result.cost + recipe.bias + repeatCost;
+            if (!selected || totalCost < selected.cost) {
+              selected = { ...result, rid, cost: totalCost };
             }
           }
           if (!selected) throw new Error(`No safe layout for scene "${scene.title}"; use one main photo and 2-9 supporting photos`);
+          prev = selected.rid;
+          usage.set(selected.rid, (usage.get(selected.rid) || 0) + 1);
           selected.pages.forEach((pg) => {
             pg.scene = scene.title;
             pg.sceneId = scene.id;
@@ -966,18 +977,34 @@ function editorTextHtml(text, offset) {
   const rect = { ...text.box, x: text.box.x - offset };
   const align = ["left", "center", "right"].includes(text.align) ? text.align : "left";
   const color = /^#[0-9a-f]{6}$/i.test(text.color || "") ? text.color : theme.ink;
-  return `<div class="editor-text" data-text-id="${esc(text.id)}" dir="${dirOf(text.text)}" style="${box(rect)};font-size:${Number(text.fontPt).toFixed(2)}pt;font-weight:${Math.round(text.weight || 500)};color:${color};text-align:${align}">${esc(text.text || "")}</div>`;
+  const scriptCls = text.fontStyle === "script" ? " script-text" : "";
+  return `<div class="editor-text${scriptCls}" data-text-id="${esc(text.id)}" dir="${dirOf(text.text)}" style="${box(rect)};font-size:${Number(text.fontPt).toFixed(2)}pt;font-weight:${Math.round(text.weight || 500)};color:${color};text-align:${align}">${esc(text.text || "")}</div>`;
+}
+
+function editorGraphicHtml(graphic, offset) {
+  if (graphic.hidden || !GRAPHICS[graphic.kind]) return "";
+  const rect = { ...graphic.box, x: graphic.box.x - offset };
+  return `<div class="editor-graphic" data-graphic-id="${esc(graphic.id)}" data-graphic-kind="${esc(graphic.kind)}" style="${box(rect)}">${graphicSvgMarkup(graphic)}</div>`;
+}
+
+function pageWashHtml(washKey, side) {
+  if (!washKey || washKey === "none") return "";
+  const svg = washSvgMarkup(washKey, side);
+  return svg ? `<div class="page-wash" data-wash="${esc(washKey)}">${svg}</div>` : "";
 }
 
 function editorSpreadHtml(pg, no) {
   const spread = pg.projectSpread;
-  const offset = physLeft(no) ? 0 : W;
-  let body = "";
+  const leftSide = physLeft(no);
+  const side = leftSide ? "left" : "right";
+  const offset = leftSide ? 0 : W;
+  let body = pageWashHtml(spread.wash?.[side], side);
   for (const frame of spread.frames) {
     if (frame.hidden) continue;
     const placement = placeEditorFrame(frame, spread.id, no);
-    body += img(placement, { ...frame.box, x: frame.box.x - offset });
+    body += img(placement, { ...frame.box, x: frame.box.x - offset }, frame.mat ? "mat" : "");
   }
+  body += (spread.graphics || []).map((graphic) => editorGraphicHtml(graphic, offset)).join("");
   body += spread.texts.map((text) => editorTextHtml(text, offset)).join("");
   return section(body + folio(no, pg));
 }
@@ -1098,6 +1125,9 @@ for (let n = 2; n < totalPages; n += 2)
 function coverHtml() {
   const ttl = album.title || "", sub = album.subtitle || dateLine;
   const style = coverSpec.style || (PHOTO_FIRST ? (coverItems.length >= 3 ? "collage" : "photo") : (coverItems.length >= 3 ? "grid" : "color"));
+  const craftedCover = PHOTO_FIRST && DECOR_MODE === "crafted" && theme === THEMES.white;
+  const coverWash = craftedCover ? pageWashHtml(coverSpec.wash || "sky", "left") : "";
+  const coverMat = craftedCover ? "mat" : "";
   if (style === "collage") {
     if (coverItems.length !== 3) throw new Error("A collage cover needs exactly three photos");
     const bx = { x: B + M, y: B + M, w: TW - 2 * M, h: TH - 2 * M };
@@ -1112,14 +1142,20 @@ function coverHtml() {
     ];
     const titleCell = { x: bx.x + mainW + G, y: bx.y, w: sideW, h: headingH };
     if (RTL) for (const cell of [...cells, titleCell]) cell.x = W - cell.x - cell.w;
-    const titleSize = fitText(ttl.toUpperCase(), sideW - 4, headingH - 18, 15, 6, 0.72, 1.05);
-    return section(cells.map((cell, i) => img(placeImage(coverItems[i], cell, "cover"), cell)).join("") +
+    const titleSize = fitText(ttl.toUpperCase(), sideW - 4, headingH - 22, 15, 6, 0.72, 1.05);
+    const flourish = craftedCover
+      ? `<div class="cover-flourish">${graphicSvgMarkup({ kind: "flourish-scroll", color: theme.ink })}</div>`
+      : "";
+    return section(coverWash + cells.map((cell, i) => img(placeImage(coverItems[i], cell, "cover"), cell, coverMat)).join("") +
       `<div class="cover-collage-title" dir="${dirOf(ttl)}" style="${box(titleCell)}"><div style="font-size:${mm(titleSize)}">${esc(ttl)}</div>` +
-      `<span>${esc(sub)}</span></div>`);
+      `<span>${esc(sub)}</span>${flourish}</div>`);
   }
   if (style === "photo") {
     const area = { x: B + M, y: B + M + 24, w: TW - 2 * M, h: TH - 2 * M - 24 };
-    return section(img(placeImage(coverItems[0], area, "cover"), area) +
+    const flourish = craftedCover
+      ? `<div class="editor-graphic" style="left:${mm(B + M)};top:${mm(B + M + 15)};width:38mm;height:9mm">${graphicSvgMarkup({ kind: "flourish-scroll", color: theme.ink })}</div>`
+      : "";
+    return section(coverWash + img(placeImage(coverItems[0], area, "cover"), area, coverMat) + flourish +
       `<div class="compact-heading" dir="${dirOf(ttl)}" style="${start}:${mm(B + M)};top:${mm(B + M)};width:${mm(TW - 2 * M)}"><div class="big" style="font-size:12mm">${esc(ttl)}</div><div class="compact-date" style="margin-top:3mm">${esc(sub)}</div></div>`);
   }
   if (style === "grid" && coverItems.length >= 3) {
@@ -1155,8 +1191,11 @@ html,body{margin:0;padding:0}
 body{background:${theme.bg};color:${theme.ink};font-family:'${BOOK_FONT}','Montserrat','Heebo',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .page{position:relative;width:${W}mm;height:${H}mm;overflow:hidden;background:${theme.bg};break-after:page}
 .page:last-child{break-after:auto}
-.page>*{position:absolute}
+.page>*{position:absolute;z-index:1}
+.page-wash{left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.page-wash svg{width:100%;height:100%;display:block}
 .ph{display:block;object-fit:cover}
+.ph.mat{box-sizing:border-box;border:2.4mm solid #ffffff;box-shadow:0 1.2mm 4mm rgba(20,16,14,.10)}
 .ph.round{border-radius:50%}
 .shade{left:0;right:0;bottom:0;height:42%;background:linear-gradient(to top,rgba(0,0,0,.42),rgba(0,0,0,0))}
 .overlay{color:#fff}
@@ -1188,11 +1227,73 @@ body{background:${theme.bg};color:${theme.ink};font-family:'${BOOK_FONT}','Monts
 .compact-title{font-weight:700;font-size:6.3mm;line-height:1.1;margin-top:2.2mm;letter-spacing:-.02em}
 .cover-collage-title{display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;padding:2mm;color:${theme.ink};font-weight:800;line-height:.98;letter-spacing:-.035em;text-transform:uppercase}
 .cover-collage-title span{display:block;font-size:3.1mm;font-weight:500;letter-spacing:.12em;line-height:1.4;margin-top:6mm}
-.editor-text{box-sizing:border-box;white-space:pre-wrap;overflow:hidden;line-height:1.2}
+.cover-flourish{width:42mm;height:10mm;margin-top:4mm}
+.cover-flourish svg{width:100%;height:100%;display:block}
+.editor-text{box-sizing:border-box;white-space:pre-wrap;overflow:hidden;line-height:1.2;z-index:3}
+.editor-text.script-text{font-family:'Segoe Script','Brush Script MT','Snell Roundhand','Apple Chancery','Heebo',cursive;font-style:italic;line-height:1.15}
+.editor-graphic{pointer-events:none;z-index:3}
+.editor-graphic svg{width:100%;height:100%;display:block}
 [dir=rtl],[dir=rtl] *{letter-spacing:0!important}
 @media screen{body{background:#666}.page{margin:0 0 4mm}}
 `;
 const doc = (body) => `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${body}</body></html>`;
+
+const autoSceneDecor = new Map();
+if (!editorProject && PHOTO_FIRST) {
+  let scenePage = 2;
+  let spreadIndex = 0;
+  for (const chapter of plan) {
+    for (const spread of chapter.spreads) {
+      const pageObjects = spread.pages || [];
+      const sceneId = pageObjects.find((page) => page.sceneId)?.sceneId;
+      if (sceneId) {
+        const frames = [...new Map(usages
+          .filter((usage) => usage.sceneId === sceneId && usage.frameId)
+          .map((usage) => [usage.frameId, {
+            id: usage.frameId,
+            photo: usage.code,
+            role: usage.role,
+            page: usage.page,
+            box: {
+              ...usage.box,
+              x: usage.box.x + (physLeft(usage.page) ? 0 : W),
+            },
+          }])).values()];
+        const baseTexts = textUsages.filter((text) => text.sceneId === sceneId);
+        const decor = buildSpreadDecor({
+          sceneId,
+          index: spreadIndex,
+          recipe: spread.rid,
+          frames,
+          texts: baseTexts,
+          spec: { pageWidth: W, pageHeight: H, bleed: B, margin: M, binding: IE, gutter: G },
+          direction: RTL ? "rtl" : "ltr",
+          decor: DECOR_MODE,
+        });
+        autoSceneDecor.set(sceneId, decor);
+        for (const pageNo of [scenePage, scenePage + 1]) {
+          const leftSide = physLeft(pageNo);
+          const side = leftSide ? "left" : "right";
+          const offset = leftSide ? 0 : W;
+          let html = interior[pageNo - 1];
+          const washMarkup = pageWashHtml(decor.wash?.[side], side);
+          if (washMarkup) html = html.replace('<section class="page">', `<section class="page">${washMarkup}`);
+          for (const frame of decor.frames) {
+            if (frame.mat) {
+              html = html.replace(new RegExp(`(<img class="ph )(" alt="${esc(frame.photo)}")`), `$1mat$2`);
+            }
+          }
+          const extraGraphics = (decor.graphics || []).map((g) => editorGraphicHtml(g, offset)).join("");
+          const extraCallouts = decor.texts.filter((t) => t.role === "callout").map((t) => editorTextHtml(t, offset)).join("");
+          html = html.replace("</section>", `${extraGraphics}${extraCallouts}</section>`);
+          interior[pageNo - 1] = html;
+        }
+      }
+      scenePage += 2;
+      spreadIndex++;
+    }
+  }
+}
 
 await fs.mkdir(path.join(OUT, "img"), { recursive: true });
 await fs.mkdir(path.join(OUT, "preview"), { recursive: true });
@@ -1391,12 +1492,14 @@ if (editorProject) {
       pages: editorScenePages.get(id),
       photos: spread.frames.filter((frame) => !frame.hidden).map((frame) => frame.photo),
       recipe: spread.layout,
+      wash: spread.wash || { left: "none", right: "none" },
       frames: spread.frames.map((frame) => ({
         id: frame.id, photo: frame.photo, role: frame.role, box: frame.box,
         fit: frame.fit, focusX: frame.focusX, focusY: frame.focusY,
-        zoom: frame.zoom, hidden: !!frame.hidden,
+        zoom: frame.zoom, mat: !!frame.mat, hidden: !!frame.hidden,
       })),
       texts: spread.texts.map((text) => ({ ...text, box: { ...text.box } })),
+      graphics: (spread.graphics || []).map((graphic) => ({ ...graphic, box: { ...graphic.box } })),
     });
   }
 } else if (PHOTO_FIRST) {
@@ -1418,6 +1521,7 @@ if (editorProject) {
             x: usage.box.x + (physLeft(usage.page) ? 0 : W),
           },
         }])).values()];
+      const decor = autoSceneDecor.get(sceneId);
       sceneEvidence.push({
         id: sceneId,
         chapterId: chapter.chapter.id,
@@ -1426,8 +1530,10 @@ if (editorProject) {
         pages: [scenePage, scenePage + 1],
         photos: frames.map((frame) => frame.photo),
         recipe: spread.rid,
-        frames,
-        texts: textUsages.filter((text) => text.sceneId === sceneId),
+        wash: decor?.wash || { left: "none", right: "none" },
+        frames: decor?.frames || frames,
+        texts: decor?.texts || textUsages.filter((text) => text.sceneId === sceneId),
+        graphics: decor?.graphics || [],
       });
       scenePage += 2;
     }

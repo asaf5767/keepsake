@@ -52,7 +52,8 @@ Lives in the work folder next to `cull.json`. `pick.mjs` writes a first version 
 |---|---|---|
 | `title`, `subtitle`, `author` | — | Title page and cover. `subtitle` falls back to the date range. |
 | `dates` | from EXIF | Overrides the date line ("10 May – 13 May 2025"). |
-| `theme` | `white` | `white`, `cream` or `dark`: page and gap colour. |
+| `theme` | `white` | `white`, `cream` or `dark`: base paper colour. |
+| `decor` | `crafted` | `crafted` adds subtle watercolor page washes (`sky`, `rose`, `sand`, `sage`, `lavender`), thin white photo borders on tinted pages, vector ornaments/badges and optional script callouts. Set `"none"` for plain paper only. |
 | `chapterStyle` | `compact` | Photo-first layouts with small headings. Explicit `color`, `page` and `overlay` retain the earlier designs. Scenes require `compact`. |
 | `accent` | from photos | Accent for legacy colour styles. The compact design uses neutral type on white by default. |
 | `density` | `balanced` | Automatic planning target: `airy` about 2.5, `balanced` about 4.5, `full` about 7 photos per spread. Explicit scenes already determine grouping. |

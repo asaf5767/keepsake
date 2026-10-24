@@ -24,12 +24,14 @@ available. It then creates `album.project.json`.
 `album.project.json` is a versioned editable document. It holds:
 
 - the order of scene spreads;
-- stable spread, photo-frame and text IDs;
-- the photograph in each frame;
+- stable spread, photo-frame, text and graphic IDs;
+- the photograph in each frame, plus optional white frame border (`mat`);
+- left and right page watercolor washes (`none`, `sky`, `rose`, `sand`, `sage`, `lavender`);
+- vector graphics and badges (`flourish-scroll`, `flourish-heart`, `boho-arrow`, `botanical-flower`, `lavender-sprig`, `badge-love-circle`, `badge-love-frame`, `badge-heart`, `compass-star`);
 - millimetre boxes across the complete two-page spread;
 - safe, contained or manual crop controls;
-- wording, text size, colour and alignment;
-- the selected layout family, paper, type and review decisions.
+- wording, text size, style (`sans` or `script`), colour and alignment;
+- the selected layout family, paper, type, decor mode and review decisions.
 
 Every save checks the previous revision and writes through a temporary file.
 An old browser tab cannot silently overwrite a newer save.
@@ -45,10 +47,12 @@ The production UI uses the selected Storyboard workflow:
 
 - see and reorder the complete story;
 - open one scene spread;
-- preview and apply portrait-lead, reverse-lead, wide, portrait-row/facing-pair
-  and story-mosaic layouts when they are safe for those photos;
-- replace a photograph from the locally kept photo library;
-- move and resize photo or text objects across both pages;
+- preview and apply portrait-lead, reverse-lead, framed-haven (framed portrait + flourishes),
+  overlap-story (layered inset + motif), center-note-grid (mosaic around a central note + scroll flourish),
+  wide-story, portrait-row/facing-pair and story-mosaic layouts when they are safe for those photos;
+- replace a photograph from the locally kept photo library, or toggle its white photo border;
+- choose left and right page watercolor washes, add/swap/move/resize vector graphics and seam stickers, or drop in optional script/sans callouts;
+- move and resize photo, graphic or text objects across both pages;
 - use subject-aware, whole-photo or manual framing;
 - edit titles and notes, or add another text object;
 - change white, cream or dark paper and Montserrat/Heebo type;
