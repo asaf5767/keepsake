@@ -2,9 +2,60 @@
 
 Turn a folder of hundreds of photos into a printed photo book. Keepsake chooses the photos the way a careful person would, then designs the pages.
 
+<p align="center"><img src="docs/images/hero.jpg" alt="A messy camera roll of 36 photos on the left, with blurry shots, duplicates, a receipt and a screenshot crossed out; on the right, the finished photo book cover and a designed spread." width="100%"></p>
+
 *A keepsake is something you keep to remember a moment. Choosing what is worth keeping is the main job of this skill.*
 
 > **Not technical?** Start with the simple step-by-step guide for Claude and ChatGPT desktop users: **[English](docs/start-here.md)** · **[עברית](docs/start-here.he.md)**
+
+*The trip in these pictures is a fictional sample: the photos were generated with AI and the people are not real. Everything else (the sheets, the book pages, the PDFs and the editor) is real Keepsake output from that sample.*
+
+## See it work
+
+### 1. It throws out what you would throw out
+
+Blurry and dark shots, a receipt, a map, a screenshot and extra frames of the same moment. Each one is labelled with the reason, so a mistake is easy to rescue.
+
+<img src="docs/images/cull-rejected.jpg" alt="Keepsake's rejects sheet: blurry and too-dark photos, a receipt flagged as a menu, a map, a ticket screenshot and duplicate frames, each labelled with its reason." width="100%">
+
+### 2. It keeps the best frame of every moment
+
+Bursts and reshoots become one moment. The best frame is outlined in green; the others wait on the side.
+
+<img src="docs/images/best-frame.jpg" alt="Rows of near-identical frames from the same moments, with the chosen best frame outlined in green." width="100%">
+
+### 3. It picks a varied story, day by day
+
+Chapters follow the days and places of the trip. Picks are green; the grey *bench* is next in line if you want to swap.
+
+<img src="docs/images/pick-sheet.jpg" alt="The pick sheet: three chapters (Alfama, Restelo, Sintra) with picked photos marked in green and bench photos in grey." width="100%">
+
+### 4. It designs the book
+
+Large main photos, tight mosaics, crops that keep people whole. You get a reading PDF, print-ready interior and cover files, and a preview of every spread.
+
+<table>
+  <tr>
+    <td width="38%"><img src="docs/images/cover.jpg" alt="Book cover: 'Lisbon' with a sunset group photo at the Cabo da Roca lighthouse."></td>
+    <td><img src="docs/images/spread-02.jpg" alt="Spread: a group selfie over Lisbon rooftops facing a tram photo and a tram street."><br><img src="docs/images/spread-06.jpg" alt="Spread: two friends eating custard tarts facing a selfie in front of a street-art mural."></td>
+  </tr>
+</table>
+
+<img src="docs/images/spread-03.jpg" alt="Spread: friends climbing Alfama stairs and a box of custard tarts, facing a woman touching blue azulejo tiles on a pink page wash." width="49%"> <img src="docs/images/spread-08.jpg" alt="Spread: a picnic in Sintra on a pink wash, facing a woman with arms wide on the Moorish Castle walls." width="49%">
+
+### 5. Pick a style
+
+The same photos in the three ready-made styles: **Modern**, **Crafted** and **Gallery**.
+
+<img src="docs/images/styles.jpg" alt="The same spread shown three times: Modern on white with borderless photos, Crafted on cream with a watercolor wash and thin white borders, Gallery on dark paper with white photo borders." width="100%">
+
+### 6. Change anything in the local editor
+
+See the whole book at once, reorder scenes, swap a photo, try a safer layout, switch the style, then export new PDFs. It runs on your computer; the photos stay there.
+
+<img src="docs/images/editor-styles.gif" alt="The Keepsake editor switching one spread between the Modern, Gallery and Crafted styles." width="100%">
+
+<img src="docs/images/editor-storyboard.jpg" alt="The editor's Storyboard: the cover, opening page and every spread of the book as cards you can reorder and open." width="49%"> <img src="docs/images/editor-layouts.jpg" alt="The editor's layout chooser: safe layout options for the open spread, with unsafe ones greyed out." width="49%">
 
 ## Why
 
