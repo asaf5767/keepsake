@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createEditorProject, saveEditorProject } from "../scripts/editor-project.mjs";
+import { pdfImageSizes } from "./pdf-evidence.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(path.join(here, "..", "scripts", "package.json"));
@@ -38,7 +39,7 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
         { title: "Second scene", photos: ["P004", { id: "P005", role: "main" }, "P006"] },
       ] }],
     };
-    for (const mode of ["compact", "rtl", "color"]) {
+    for (const mode of ["compact", "rtl", "quiet", "color"]) {
       const dir = path.join(root, mode);
       await fs.mkdir(dir);
       const album = structuredClone(base);
@@ -46,6 +47,10 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
         album.direction = "rtl";
         album.title = "ספר תמונות";
         album.chapters[0].scenes[0].title = "יום בעיר";
+      }
+      if (mode === "quiet") {
+        album.showHeadings = false;
+        album.chapters[0].scenes[0].layout = "framed-haven";
       }
       if (mode === "color") {
         album.chapterStyle = "color";
@@ -57,6 +62,12 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
       assert.equal(run.status, 0, `${mode}: ${run.error || ""}\n${run.stdout}\n${run.stderr}`);
       const out = path.join(dir, "book");
       const layout = JSON.parse(await fs.readFile(path.join(out, "layout.json"), "utf8"));
+      if (mode === "quiet") {
+        assert.equal(layout.scenes[0].recipe, "framed-haven");
+        assert.ok(layout.scenes.every(scene => scene.texts.every(text => text.hidden || !text.text)));
+      }
+      assert.ok(layout.scenes.every(scene => !scene.texts?.some(text => text.role === "callout")),
+        "New builds do not invent decorative phrases by default");
       assert.match(layout.sourceFingerprint, /^[0-9a-f]{64}$/);
       const inside = await PDFDocument.load(await fs.readFile(path.join(out, "interior.pdf")));
       const reading = await PDFDocument.load(await fs.readFile(path.join(out, "album.pdf")));
@@ -68,6 +79,12 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
         assert.ok(Math.abs(ptToMm(page.getTrimBox().width) - 180) < 1e-6);
       }
       assert.ok(Math.abs(ptToMm(reading.getPage(0).getCropBox().width) - 180) < 1e-6);
+      for (const page of reading.getPages()) {
+        assert.ok(Math.abs(ptToMm(page.getMediaBox().width) - 180) < 1e-6,
+          "Reading PDF media size must equal trim, even in viewers that ignore CropBox");
+        assert.equal(page.getMediaBox().x, 0);
+        assert.equal(page.getCropBox().x, 0);
+      }
       if (mode !== "color") {
         assert.equal(layout.pageCount, 6);
         assert.equal(layout.scenes.length, 2);
@@ -115,9 +132,19 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
         assert.equal(editedLayout.scenes[0].frames[0].photo, "P001");
         assert.equal(editedLayout.scenes[0].frames[0].box.x, moved.box.x);
         assert.equal(editedLayout.scenes[0].texts.find((text) => text.role === "title").text, editedTitle);
-        assert.match(await fs.readFile(path.join(editedOut, "interior.html"), "utf8"), new RegExp(editedTitle));
+        if (mode !== "quiet") assert.match(await fs.readFile(path.join(editedOut, "interior.html"), "utf8"), new RegExp(editedTitle));
         const editedPdf = await PDFDocument.load(await fs.readFile(path.join(editedOut, "interior.pdf")));
         assert.equal(editedPdf.getPageCount(), layout.pageCount);
+        const expected = editedLayout.placements.find(placement => placement.page === 1).rect;
+        const actual = pdfImageSizes(editedPdf, editedPdf.getPage(0));
+        assert.ok(actual.some(size => Math.abs(ptToMm(size.width) - expected.w) < 0.8 &&
+          Math.abs(ptToMm(size.height) - expected.h) < 0.8),
+        `PDF photo must retain planned physical dimensions, not shrink due to off-page layers: ${JSON.stringify({expected, actual})}`);
+        const prepared = spawnSync(process.execPath, [
+          path.join(here, "..", "scripts", "edit.mjs"), manifest, "--prepare-only", "--out", out,
+        ], { encoding: "utf8", timeout: 10000 });
+        assert.equal(prepared.status, 0, prepared.stderr);
+        assert.match(prepared.stdout, /No server was started/);
       }
     }
     const invalid = structuredClone(base);

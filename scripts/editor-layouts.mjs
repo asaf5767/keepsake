@@ -1,6 +1,6 @@
 import { imagePlacement } from "./composition.mjs";
 import { buildSpreadDecor } from "./editor-decor.mjs";
-import { photoItem, placementWarnings } from "./editor-placement.mjs";
+import { photoItem, placementWarnings, protectedBounds } from "./editor-placement.mjs";
 
 const box = (x, y, w, h) => ({ x, y, w, h });
 const area = (rect) => rect.w * rect.h;
@@ -32,7 +32,7 @@ function grid(rect, count, gap) {
 
 function templates(count, spec) {
   const { pageWidth, pageHeight, bleed, margin, binding, gutter: gap } = spec;
-  const outer = bleed + margin, inner = bleed + binding, top = outer + 16;
+  const outer = bleed + margin, inner = bleed + binding, top = outer + (spec.showHeadings === false ? 0 : 16);
   const left = box(outer, top, pageWidth - outer - inner, pageHeight - top - outer);
   const right = { ...left, x: pageWidth + inner };
   const heading = box(outer, outer, left.w, 15);
@@ -273,19 +273,29 @@ export function makeEditorLayouts(photos, spec) {
     });
     const coverage = frames.reduce((sum, frame) => sum + area(frame.box), 0) /
       (2 * spec.pageWidth * spec.pageHeight);
-    const available = !!valid && (!template.crossFold || coverage >= 0.6);
+    const assigned = assignment.picks.map((index, slot) => matrix[slot][index]);
+    const obscured = assigned.some((cell, index) => {
+      const subject = protectedBounds(cell.photo, cell.placement);
+      return subject && assigned.slice(index + 1).some(other => {
+        const rect = other.placement.rect;
+        return rect.x < subject.x + subject.w && rect.x + rect.w > subject.x &&
+          rect.y < subject.y + subject.h && rect.y + rect.h > subject.y;
+      });
+    });
+    const available = !!valid && !obscured && (!template.crossFold || coverage >= 0.6);
     const decor = buildSpreadDecor({
       sceneId: photos[0]?.sceneId || "preview",
       index: spec.spreadIndex ?? 1,
       recipe: template.key,
       frames,
       texts: [
-        { id: "preview-kicker", role: "kicker", text: "", box: { ...template.kickerBox }, hidden: false },
-        { id: "preview-title", role: "title", text: "", box: { ...template.titleBox }, hidden: false },
+        { id: "preview-kicker", role: "kicker", text: "", box: { ...template.kickerBox }, hidden: spec.showHeadings === false },
+        { id: "preview-title", role: "title", text: "", box: { ...template.titleBox }, hidden: spec.showHeadings === false },
       ],
       spec,
       direction: spec.direction || "ltr",
       decor: spec.decor || "crafted",
+      callouts: spec.callouts === true,
     });
     return {
       key: template.key,
@@ -300,6 +310,7 @@ export function makeEditorLayouts(photos, spec) {
       titleTile: !!template.titleTile,
       crossFold: !!template.crossFold,
       coverage,
+      cost: assignment.cost / photos.length,
       available,
       reason: available ? "" : template.crossFold
         ? "No wide crop keeps the marked subjects clear of the fold."

@@ -8,6 +8,8 @@ Lives in the work folder next to `cull.json`. `pick.mjs` writes a first version 
   "subtitle": "Four days by the Tagus",
   "author": "Assaf",
   "chapterStyle": "compact",
+  "showHeadings": false,
+  "callouts": false,
   "cover": { "photos": ["P012", "P018", "P038"] },
   "titlePage": { "photo": "P024" },
   "photoSettings": {
@@ -54,6 +56,8 @@ Lives in the work folder next to `cull.json`. `pick.mjs` writes a first version 
 | `dates` | from EXIF | Overrides the date line ("10 May – 13 May 2025"). |
 | `theme` | `white` | `white`, `cream` or `dark`: base paper colour. |
 | `decor` | `crafted` | `crafted` adds subtle watercolor page washes (`sky`, `rose`, `sand`, `sage`, `lavender`), thin white photo borders on tinted pages, vector ornaments/badges and optional script callouts. Set `"none"` for plain paper only. |
+| `showHeadings` | `true` for existing manifests; new drafts use `false` | `false` hides printed scene headings/dates and frees their photo space. Internal labels remain editable. |
+| `callouts` | `false` | Opt in to generated decorative phrases. Washes and graphics remain when false. Manual editor callouts are unaffected; do not generate wording without consent. |
 | `chapterStyle` | `compact` | Photo-first layouts with small headings. Explicit `color`, `page` and `overlay` retain the earlier designs. Scenes require `compact`. |
 | `accent` | from photos | Accent for legacy colour styles. The compact design uses neutral type on white by default. |
 | `density` | `balanced` | Automatic planning target: `airy` about 2.5, `balanced` about 4.5, `full` about 7 photos per spread. Explicit scenes already determine grouping. |
@@ -88,7 +92,8 @@ Lives in the work folder next to `cull.json`. `pick.mjs` writes a first version 
 - `"titlePage": { "photos": [3 codes] }`: a 2×2 grid with the title in one box.
 - Leave it out for a big title on white.
 
-Title-page and cover photos may also appear inside the book.
+The renderer permits intentional repeats, but reserve distinct cover, opening,
+interior and closing photos by default.
 
 ## Chapter fields
 
@@ -100,6 +105,11 @@ Title-page and cover photos may also appear inside the book.
 | `accent` | Overrides this chapter's colour, e.g. `"#7a3b2e"`. |
 | `photos` | Automatic chapter planning, sorted by date unless `order` overrides it. |
 | `scenes` | Compact mode only. Array of `{ "title": "...", "photos": [...] }`. Each scene makes one spread with 2-10 related photos. Use instead of `photos`. |
+
+Optional `scene.layout` selects a safe editor template by key (`portrait-lead`,
+`reverse-lead`, `framed-haven`, `overlap-story`, `center-note-grid`, `wide-story`,
+`portrait-row`, `story-mosaic`). An unsafe choice fails explicitly. Without it,
+the automatic planner compares compatible crafted layouts and standard recipes.
 
 ## Photo items
 
@@ -123,7 +133,7 @@ The editor supplies `protect` after looking at the photo. These are framing inst
 
 ## Outputs
 
-- `album.pdf`: lighter reading copy with 180 dpi images, vector text, the front cover included and bleed hidden. Print images in the separate components remain full resolution.
+- `album.pdf`: lighter reading copy with 180 dpi images, vector text, the front cover and physically trim-sized page boxes. Print images in the separate components remain full resolution.
 - `interior.pdf`, `cover.pdf`: print components with exact trim/bleed boxes. Printer acceptance still needs confirmation against its template.
 - `preview.html`: complete scrollable local preview.
 - `preview/spread-NN.jpg`: individual spreads; `preview/spreads-NN.jpg`: proof sheets.

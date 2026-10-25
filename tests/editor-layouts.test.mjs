@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeEditorLayouts } from "../scripts/editor-layouts.mjs";
+import { buildSpreadDecor } from "../scripts/editor-decor.mjs";
 
 const spec = { pageWidth: 306, pageHeight: 306, bleed: 3, margin: 10, binding: 4, gutter: 3 };
 const photos = [
@@ -73,4 +74,23 @@ test("crafted layouts attach watercolor washes, matted frames and flourishes", (
   const center = options.find((option) => option.key === "center-note-grid");
   assert.ok(center.available);
   assert.ok(center.graphics.some((g) => g.kind === "flourish-scroll"));
+});
+
+test("phrases are opt-in and do not remove washes or artwork", () => {
+  const params = { sceneId: "s", spec, index: 1, recipe: "overlap-story", frames: [], texts: [] };
+  const plain = buildSpreadDecor(params);
+  assert.equal(plain.texts.length, 0);
+  assert.ok(plain.graphics.length > 0);
+  assert.notEqual(plain.wash.right, "none");
+  const hebrew = buildSpreadDecor({ ...params, callouts: true, direction: "rtl" });
+  assert.ok(hebrew.texts.some(t => t.role === "callout"));
+  assert.ok(hebrew.texts.every(t => !/[a-z]/i.test(t.text)));
+});
+
+test("title-free layouts use the top margin for photos", () => {
+  const titled = makeEditorLayouts(photos, spec).find(o => o.key === "portrait-lead");
+  const quiet = makeEditorLayouts(photos, { ...spec, showHeadings: false }).find(o => o.key === "portrait-lead");
+  assert.equal(quiet.frames[0].box.y, spec.bleed + spec.margin);
+  assert.ok(quiet.frames[0].box.h > titled.frames[0].box.h);
+  assert.equal(quiet.callouts.length, 0);
 });

@@ -1,17 +1,17 @@
 # Curation
 
-You are the editor of a book someone will hold for years. The book is the trip, not the archive. Leaving a photo out is the main act of taste here. `pick.mjs` has already done the parts a script does well: one frame per moment, no near-repeats, and a fair share for every chapter. Your job on the pick and frames sheets is the judgement it can't make.
+You are the editor of a book someone will hold for years. It can be a celebration, a trip or a family year. `pick.mjs` proposes moments using technical similarity, not face identities. Review its choices: it can both miss meaningful groupings and leave in near-repeats.
 
 ## How many
 
-- `pick.mjs` sizes the book from the number of distinct scenes: a trip gets 16–60 photos, a year 36–120. Override it with `--photos N` only when the user asks for a bigger or smaller book.
+- The automatic size is a candidate target, not a verdict. For a people-heavy single-day event, check `more-*`: different groups against one fence can score as repeats. Use `--photos N` when the initial draft cannot cover the intended story, then review the expanded pool.
 - The leftover keepers are still in the folder; the book is not a backup.
 - Ask the user before going over 150 photos or 48 pages. Print price rises with page count.
 
 ## Chapters
 
 - `pick.mjs` splits by day for a trip (and again when a day moves to another town), by month for a year, and by year for longer. Merge or split chapters when the story says otherwise, for example a wedding day that deserves its own chapter.
-- `title` is the place or event, in the user's words. `kicker` is the date ("Saturday, 10 May").
+- Printed titles are off by default. If requested, `title` is the place or event in the user's words, not an invented "end of the evening" label. Do not guess relationships.
 - A `note` holds only words the user gave you or plain facts. Don't invent memories or feelings; leave `note` out instead.
 
 ## Reviewing the pick sheets
@@ -31,6 +31,11 @@ Swap in a bench or `more` photo when it shows:
 The ★ and the pick order are technical, not taste. A sharp but boring photo loses to a slightly soft one that tells the story. A `♥` or `edit` photo was chosen by the owner; keep it unless it is clearly broken.
 
 ## Reviewing the frames sheets
+
+Use `node scripts/review.mjs "<work>" --codes P010,P012` for uncropped large
+comparisons, or omit `--codes` for all keepers. Preserve a selection log with
+codes, roles, reasons and evidence viewed. It must explain manual swaps and
+removals; do not reconstruct reasons after the fact.
 
 The script chose each moment's frame by sharpness, exposure, colour and the owner's ratings and edits. It can't see faces. For photos of people, pick the frame where:
 - eyes are open and people look at the camera or at each other
@@ -61,6 +66,9 @@ For scenes, prefer the cleaner composition: a straight horizon, no stranger walk
 - **Single-photo cover** (`cover.photo`): a dominant photograph with a compact title; the crop uses the same protection as the interior.
 - The earlier colour block and full-bleed covers remain explicit choices, not the default.
 - The title page uses a different photo from the cover.
+- Reserve bookend photographs before finalizing the scenes; no exact reuse
+  inside the book unless the user approves it. Three-photo collage is not a
+  mandatory format: use one strong photo rather than three weak/repeated ones.
 
 ## Closing
 

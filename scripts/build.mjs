@@ -16,7 +16,8 @@ import { createHash } from "node:crypto";
 import { imagePlacement, placementCost, validateProtection, focusPoint } from "./composition.mjs";
 import { DECOR_MODES, GRAPHICS, buildSpreadDecor, graphicSvgMarkup, washSvgMarkup } from "./editor-decor.mjs";
 import { albumFingerprint, loadEditorProject } from "./editor-project.mjs";
-import { placementWarnings, resolveFramePlacement } from "./editor-placement.mjs";
+import { placementWarnings, protectedBounds, resolveFramePlacement } from "./editor-placement.mjs";
+import { makeEditorLayouts } from "./editor-layouts.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FONTS = path.join(HERE, "..", "assets", "fonts");
@@ -41,8 +42,15 @@ if (editorProject) {
   album.theme = editorProject.book.theme;
   album.decor = editorProject.book.decor || album.decor || "crafted";
   album.font = editorProject.book.font;
+  album.showHeadings = editorProject.book.showHeadings ?? album.showHeadings;
+  album.callouts = editorProject.book.callouts ?? album.callouts;
 }
 const DECOR_MODE = DECOR_MODES.includes(album.decor) ? album.decor : "crafted";
+const SHOW_HEADINGS = album.showHeadings !== false;
+const CALLOUTS = album.callouts === true;
+for (const key of ["showHeadings", "callouts"]) {
+  if (album[key] !== undefined && typeof album[key] !== "boolean") throw new Error(`${key} must be true or false`);
+}
 
 // ─── book geometry (mm) ─────────────────────────────────────────────────────
 
@@ -91,15 +99,14 @@ const physLeft = (no) => (RTL ? no % 2 === 1 : no % 2 === 0);
 function contentBox(no) {
   const left = physLeft(no);
   const l = left ? M : M + IE, r = left ? M + IE : M;
-  const header = PHOTO_FIRST ? 18 : 0;
+  const header = PHOTO_FIRST && SHOW_HEADINGS ? 18 : 0;
   return { x: B + l, y: B + M + header, w: TW - l - r, h: TH - 2 * M - header };
 }
 function frameBox(no) {
   const left = physLeft(no);
   const l = left ? FRAME_SIDE : FRAME_SIDE + IE, r = left ? FRAME_SIDE + IE : FRAME_SIDE;
-  const header = PHOTO_FIRST ? 18 : 0;
-  const bottomCalm = PHOTO_FIRST && DECOR_MODE === "crafted" ? Math.min(46, TH * 0.155) : 0;
-  return { x: B + l, y: B + FRAME_TOP + header, w: TW - l - r, h: TH - 2 * FRAME_TOP - header - bottomCalm };
+  const header = PHOTO_FIRST && SHOW_HEADINGS ? 18 : 0;
+  return { x: B + l, y: B + FRAME_TOP + header, w: TW - l - r, h: TH - 2 * FRAME_TOP - header };
 }
 const CANON = contentBox(2);
 const CANON_FRAME = frameBox(2);
@@ -238,6 +245,15 @@ const q = (it) => it.p.quality ?? 0.5;
 const dpiCover = (p, w, h) => 25.4 / Math.max(w / p.width, h / p.height);
 const dpiPenalty = (d) => (d >= DPI_OK ? 0 : d >= DPI_WARN ? 0.08 : d >= 170 ? 0.25 : d >= DPI_FAIL ? 0.6 : 3);
 const fitIn = (p, bx) => { const w = Math.min(bx.w, bx.h * p.aspect); return { w, h: w / p.aspect }; };
+function fullPageFits(it) {
+  const placement = imagePlacement(it, BLEED_BOX);
+  const subject = protectedBounds({
+    width: it.p.width, height: it.p.height, what: it.p.vision?.what,
+    protect: it.protect, subject: it.subject, sourceFit: it.fit,
+  }, placement);
+  return placement.fill >= 0.98 && (!subject ||
+    (subject.x >= IE && subject.x + subject.w <= W - IE));
+}
 const mainPenalty = (it) => it.role === "detail" || it.role === "support" ? 4 : it.role === "main" || it.hero ? -0.5 : 0.3;
 const bleedCost = (it) => PHOTO_FIRST
   ? placementCost(it, BLEED_BOX) + mainPenalty(it) + 0.2 * (1 - q(it))
@@ -435,7 +451,8 @@ function evalSpread(slots, seg, ctx = {}) {
     let cost = 0, ok = true;
     tup.forEach((it, j) => {
       const s = slots[singleIdx[j]];
-      if ((s === "bleed" && it.solo) || (s === "frame" && it.hero && !PHOTO_FIRST)) ok = false;
+      if ((s === "bleed" && (it.solo || (PHOTO_FIRST && !fullPageFits(it)))) ||
+          (s === "frame" && it.hero && !PHOTO_FIRST)) ok = false;
       if (PHOTO_FIRST && (it.role === "detail" || it.role === "support")) ok = false;
       cost += s === "bleed" ? bleedCost(it) : frameCost(it);
     });
@@ -554,6 +571,49 @@ function planBook(scale) {
               selected = { ...result, rid, cost: totalCost };
             }
           }
+          const options = makeEditorLayouts(scene.items.map(it => ({
+            ...it.p, id: it.p.code, frameId: it.editorId, sceneId: scene.id,
+            role: it.role || "support", main: it.role === "main" || !!it.hero,
+            protect: it.protect, subject: it.subject, sourceFit: it.fit, sourceFocus: it.focus,
+          })), {
+            pageWidth: W, pageHeight: H, bleed: B, margin: M, binding: IE, gutter: G,
+            direction: RTL ? "rtl" : "ltr", decor: DECOR_MODE, callouts: CALLOUTS,
+            showHeadings: SHOW_HEADINGS, spreadIndex: [...usage.values()].reduce((a, b) => a + b, 0),
+          });
+          if (scene.layout && !options.some(option => option.key === scene.layout)) {
+            throw new Error(`Unknown scene layout "${scene.layout}"`);
+          }
+          for (const option of options) {
+            if (!option.available || (!scene.layout &&
+                (!["framed-haven", "overlap-story", "center-note-grid"].includes(option.key) ||
+                (option.key === "center-note-grid" && (!SHOW_HEADINGS || !scene.title))))) continue;
+            if (scene.layout && option.key !== scene.layout) continue;
+            const maxArea = Math.max(...option.frames.map(frame => frame.box.w * frame.box.h));
+            const main = option.frames.find(frame => frame.role === "main");
+            if (!scene.layout && main && main.box.w * main.box.h < maxArea * 0.9) continue;
+            const cost = 2 * option.cost + 0.2 + (prev === option.key ? 0.22 : 0) +
+              0.06 * (usage.get(option.key) || 0);
+            if (!scene.layout && selected && cost >= selected.cost) continue;
+            const centered = option.key === "center-note-grid";
+            const projectSpread = {
+              id: scene.id, chapterId: chapter.id, chapterTitle: chapter.title, title: scene.title,
+              layout: option.key, wash: option.wash, frames: option.frames, graphics: option.graphics,
+              texts: [
+                { id: `${scene.id}-title`, role: "title", text: scene.title || "", box: option.titleBox,
+                  fontPt: centered ? 12.5 : 17.9, weight: centered ? 500 : 700,
+                  color: theme.ink, align: centered ? "center" : RTL ? "right" : "left", hidden: !SHOW_HEADINGS },
+                { id: `${scene.id}-kicker`, role: "kicker", text: chapter.kicker || "", box: option.kickerBox,
+                  fontPt: 8.5, weight: 500, color: theme.muted,
+                  align: centered ? "center" : RTL ? "right" : "left", hidden: !SHOW_HEADINGS },
+                ...option.callouts,
+              ],
+            };
+            selected = { rid: option.key, cost, projectSpread,
+              pages: [{ kind: "editor", projectSpread }, { kind: "editor", projectSpread }] };
+          }
+          if (scene.layout && selected?.rid !== scene.layout) {
+            throw new Error(`Scene layout "${scene.layout}" cannot safely hold the selected photographs`);
+          }
           if (!selected) throw new Error(`No safe layout for scene "${scene.title}"; use one main photo and 2-9 supporting photos`);
           prev = selected.rid;
           usage.set(selected.rid, (usage.get(selected.rid) || 0) + 1);
@@ -641,6 +701,7 @@ if (editorProject) {
   for (const c of plan) {
     if (CHAPTER_STYLE !== "overlay" && !PHOTO_FIRST) pages.push({ kind: "opener", chapter: c.chapter, index: c.index }, { kind: "bleed", item: c.opener, ch: c });
     for (const sp of c.spreads) {
+      if (sp.projectSpread) editorScenePages.set(sp.projectSpread.id, [pages.length + 1, pages.length + 2]);
       if (sp.double) pages.push({ ...sp.double, ch: c });
       else for (const pg of sp.pages) pages.push({ ...pg, ch: c });
     }
@@ -847,7 +908,7 @@ const overlayTitle = (title, kicker) => {
 function folio(no, pg) {
   if (!FOLIOS) return "";
   const left = physLeft(no);
-  const label = (left ? album.title : pg.ch?.chapter.title) || "";
+  const label = SHOW_HEADINGS ? (left ? album.title : pg.ch?.chapter.title) || "" : "";
   const rtlText = dirOf(label) === "rtl";
   const text = left !== rtlText ? `${no}\u2003${label}` : `${label}\u2003${no}`;
   return `<div class="folio" dir="${dirOf(label)}" style="${left ? "left" : "right"}:${mm(B + M)};bottom:${mm(B + 4.5)}">${esc(text)}</div>`;
@@ -865,14 +926,17 @@ function compactHeading(pg, no) {
         id: `${pg.heading.sceneId}-kicker`, sceneId: pg.heading.sceneId, role: "kicker",
         text: pg.heading.kicker || "", box: kickerBox, fontPt: 8.5, weight: 500,
         color: theme.muted, align: RTL ? "right" : "left",
+        hidden: !SHOW_HEADINGS,
       },
       {
         id: `${pg.heading.sceneId}-title`, sceneId: pg.heading.sceneId, role: "title",
         text: pg.heading.title || "", box: titleBox, fontPt: 17.9, weight: 700,
         color: theme.ink, align: RTL ? "right" : "left",
+        hidden: !SHOW_HEADINGS,
       },
     );
   }
+  if (!SHOW_HEADINGS) return "";
   return `<div class="compact-heading" dir="${dirOf(pg.heading.title)}" style="left:${mm(bx.x)};top:${mm(B + M)};width:${mm(bx.w)}">` +
     `<div class="compact-date">${esc(pg.heading.kicker || "")}</div>` +
     `<div class="compact-title">${esc(pg.heading.title || "")}</div></div>`;
@@ -1135,15 +1199,27 @@ function coverHtml() {
     const sideW = bx.w - mainW - G;
     const headingH = bx.h * 0.29;
     const photoH = (bx.h - headingH - 2 * G) / 2;
-    const cells = [
+    let cells = [
       { x: bx.x, y: bx.y, w: mainW, h: bx.h },
       { x: bx.x + mainW + G, y: bx.y + headingH + G, w: sideW, h: photoH },
       { x: bx.x + mainW + G, y: bx.y + headingH + 2 * G + photoH, w: sideW, h: photoH },
     ];
-    const titleCell = { x: bx.x + mainW + G, y: bx.y, w: sideW, h: headingH };
+    let titleCell = { x: bx.x + mainW + G, y: bx.y, w: sideW, h: headingH };
+    if (coverItems[0].p.aspect > 1.1) {
+      const titleH = Math.min(36, bx.h * 0.16);
+      const imageH = bx.h - titleH - G;
+      const mainH = (imageH - G) * 0.62;
+      const supportW = (bx.w - G) / 2;
+      titleCell = { x: bx.x, y: bx.y, w: bx.w, h: titleH };
+      cells = [
+        { x: bx.x, y: bx.y + titleH + G, w: bx.w, h: mainH },
+        { x: bx.x, y: bx.y + titleH + 2 * G + mainH, w: supportW, h: imageH - mainH - G },
+        { x: bx.x + supportW + G, y: bx.y + titleH + 2 * G + mainH, w: supportW, h: imageH - mainH - G },
+      ];
+    }
     if (RTL) for (const cell of [...cells, titleCell]) cell.x = W - cell.x - cell.w;
-    const titleSize = fitText(ttl.toUpperCase(), sideW - 4, headingH - 22, 15, 6, 0.72, 1.05);
-    const flourish = craftedCover
+    const titleSize = fitText(ttl.toUpperCase(), titleCell.w - 4, titleCell.h - (sub ? 12 : 4), 15, 6, 0.72, 1.05);
+    const flourish = craftedCover && titleCell.h >= 60
       ? `<div class="cover-flourish">${graphicSvgMarkup({ kind: "flourish-scroll", color: theme.ink })}</div>`
       : "";
     return section(coverWash + cells.map((cell, i) => img(placeImage(coverItems[i], cell, "cover"), cell, coverMat)).join("") +
@@ -1189,7 +1265,7 @@ ${font("Heebo", "Heebo.ttf")}
 @page{size:${W}mm ${H}mm;margin:0}
 html,body{margin:0;padding:0}
 body{background:${theme.bg};color:${theme.ink};font-family:'${BOOK_FONT}','Montserrat','Heebo',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.page{position:relative;width:${W}mm;height:${H}mm;overflow:hidden;background:${theme.bg};break-after:page}
+.page{position:relative;width:${W}mm;height:${H}mm;overflow:hidden;contain:strict;background:${theme.bg};break-after:page}
 .page:last-child{break-after:auto}
 .page>*{position:absolute;z-index:1}
 .page-wash{left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:0}
@@ -1246,6 +1322,12 @@ if (!editorProject && PHOTO_FIRST) {
     for (const spread of chapter.spreads) {
       const pageObjects = spread.pages || [];
       const sceneId = pageObjects.find((page) => page.sceneId)?.sceneId;
+      if (spread.projectSpread) {
+        autoSceneDecor.set(sceneId, spread.projectSpread);
+        scenePage += 2;
+        spreadIndex++;
+        continue;
+      }
       if (sceneId) {
         const frames = [...new Map(usages
           .filter((usage) => usage.sceneId === sceneId && usage.frameId)
@@ -1256,7 +1338,7 @@ if (!editorProject && PHOTO_FIRST) {
             page: usage.page,
             box: {
               ...usage.box,
-              x: usage.box.x + (physLeft(usage.page) ? 0 : W),
+              x: usage.spreadBox ? usage.box.x : usage.box.x + (physLeft(usage.page) ? 0 : W),
             },
           }])).values()];
         const baseTexts = textUsages.filter((text) => text.sceneId === sceneId);
@@ -1269,6 +1351,7 @@ if (!editorProject && PHOTO_FIRST) {
           spec: { pageWidth: W, pageHeight: H, bleed: B, margin: M, binding: IE, gutter: G },
           direction: RTL ? "rtl" : "ltr",
           decor: DECOR_MODE,
+          callouts: CALLOUTS,
         });
         autoSceneDecor.set(sceneId, decor);
         for (const pageNo of [scenePage, scenePage + 1]) {
@@ -1414,7 +1497,12 @@ const readingCopy = await PDFDocument.load(await fs.readFile(path.join(OUT, "alb
 readingCopy.setTitle(album.title || "Keepsake album");
 for (const page of readingCopy.getPages()) {
   const trim = page.getTrimBox();
-  page.setCropBox(trim.x, trim.y, trim.width, trim.height);
+  page.translateContent(-trim.x, -trim.y);
+  page.setMediaBox(0, 0, trim.width, trim.height);
+  page.setCropBox(0, 0, trim.width, trim.height);
+  page.setTrimBox(0, 0, trim.width, trim.height);
+  page.setBleedBox(0, 0, trim.width, trim.height);
+  page.setArtBox(0, 0, trim.width, trim.height);
 }
 await fs.writeFile(path.join(OUT, "album.pdf"), await readingCopy.save());
 
@@ -1575,6 +1663,7 @@ const report = `# Print report — ${album.title}
 | | |
 |---|---|
 | Trim size | ${TW} × ${TH} mm |
+| Reading PDF page size | ${TW} × ${TH} mm (trim-sized MediaBox and CropBox, no bleed) |
 | Page size with bleed | ${W} × ${H} mm (${B} mm bleed each side) |
 | Grid margin / gutter | ${M} mm (+${IE} mm at the binding) / ${G} mm |
 | Interior pages | ${totalPages} (multiple of ${MULTIPLE}, minimum ${MIN_PAGES}) |

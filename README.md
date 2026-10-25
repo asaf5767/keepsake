@@ -24,6 +24,12 @@ your photos ─► 1. Clean out ─► 2. Pick ─► 3. Review ─► 4. Design
 5. **Edit (optional)** (`edit.mjs`) opens a local Storyboard. Reorder scenes, try safe layouts (including framed portrait + flourish, overlapping inset, and center-note mosaic), replace a photo, change page washes, add or move graphics/stickers, edit words, save, reopen and export through the same renderer.
 6. **Check** — the agent looks at every page and fixes bad crops or weak photos.
 
+**Quality defaults:** new drafts have no generated spread headings or slogans.
+Washes, frames and subtle artwork remain. The planner can also use compatible
+crafted layouts automatically. Photo similarity is only a proposal: the agent
+reviews expressions and different groupings, keeps a selection log, and checks
+actual PDF placement—not just browser screenshots.
+
 ## How it chooses like a person
 
 - **Date and place.** The date and time come from the camera data in each photo. The town or neighbourhood comes from the GPS position, looked up in a built-in list of 171,000 places. Photos without GPS take the place of the nearest photo in time.

@@ -44,7 +44,8 @@ You can give Keepsake your photos in four easy ways — **even without copying f
 
 ## Step 3: Start a chat and choose a folder
 
-The assistant needs access to the folder so it can work with the photos.
+The assistant needs a local work folder to store the album. If you are using a
+shared link or ZIP, an empty folder is enough.
 
 **Choose the folder that contains your trip folder**, not the trip folder itself. For example: choose `Pictures`, not `Pictures\New York 2025`. This gives Keepsake room to make the album folder next to your photos.
 
@@ -99,11 +100,16 @@ Make me a photo album from the folder "New York 2025"
 
 **Where is the album?** A new folder appears next to your photos, with `-keepsake` at the end of its name. Inside it is a folder named `book`. The file **`album.pdf`** is your album. You can also just ask: "Open the album for me".
 
+The assistant should give you the PDF **and a clickable “Edit your album” link**.
+It should also tell you the page size. The default is 30 x 30 cm, but your print
+shop may need a different size or page count.
+
 ---
 
 ## Step 6: Change it yourself (optional)
 
-Don't like a photo? Want a different order? Write:
+Don't like a photo? Want a different order? Open the **Edit your album** link.
+If the editor has been closed, write:
 
 ```text
 Open the editor

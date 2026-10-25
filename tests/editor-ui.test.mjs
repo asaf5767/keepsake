@@ -124,6 +124,9 @@ test("Storyboard edits persist and export through the browser workflow", { timeo
     await page.click('[data-action="style"]');
     await page.click('[data-action="theme"][data-theme="cream"]');
     await page.select('[data-book-field="font"]', "Heebo");
+    await page.click('[data-book-check="showHeadings"]');
+    assert.equal(await page.$eval("#spread-canvas", el => el.querySelectorAll('[data-kind="text"][aria-label^="title"]').length), 0);
+    await page.click('[data-book-check="showHeadings"]');
     await page.click('[data-action="review"]');
     await page.click('[data-action="save"]');
     await page.waitForFunction(() => !window.keepsakeEditor.isDirty() && window.keepsakeEditor.getProject().revision === 2);

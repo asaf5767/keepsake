@@ -306,6 +306,8 @@ function layoutOptions() {
     ...geometry(),
     direction: project.book.direction,
     decor: project.book.decor || "crafted",
+    showHeadings: project.book.showHeadings !== false,
+    callouts: project.book.callouts === true,
     spreadIndex,
   });
 }
@@ -438,6 +440,7 @@ function stylePanel() {
     <p>These settings also update the existing cover, opening and closing templates when you export.</p></div>
     <label class="field">Book title<input data-book-field="title" value="${esc(project.book.title)}"></label>
     <label class="field">Subtitle<input data-book-field="subtitle" value="${esc(project.book.subtitle)}"></label>
+    <label class="field"><input type="checkbox" data-book-check="showHeadings" ${project.book.showHeadings !== false ? "checked" : ""}> Show spread headings</label>
     <div class="paper-row">${Object.entries(themes).map(([key, theme]) =>
       `<button class="paper ${project.book.theme === key ? "active" : ""}" data-action="theme" data-theme="${key}" title="${theme.name}"><span style="background:${theme.paper}"></span>${theme.name}</button>`).join("")}</div>
     <label class="field">Typeface<select data-book-field="font"><option ${project.book.font === "Montserrat" ? "selected" : ""}>Montserrat</option><option ${project.book.font === "Heebo" ? "selected" : ""}>Heebo</option></select></label>
@@ -763,6 +766,16 @@ app.addEventListener("change", (event) => {
       }
     });
   }
+  if (element.dataset.bookCheck === "showHeadings") {
+    return remember(() => {
+      project.book.showHeadings = element.checked;
+      for (const id of project.order) {
+        for (const text of project.spreads[id].texts) {
+          if (text.role === "title" || text.role === "kicker") text.hidden = !element.checked;
+        }
+      }
+    });
+  }
   if (element.dataset.actionSelect === "book-decor") {
     const mode = element.value;
     return remember(() => {
@@ -779,6 +792,7 @@ app.addEventListener("change", (event) => {
           spec,
           direction: project.book.direction,
           decor: mode,
+          callouts: project.book.callouts === true,
         });
         spread.wash = decorated.wash;
         spread.frames = decorated.frames;

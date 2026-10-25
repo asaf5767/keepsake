@@ -27,6 +27,9 @@ const WORK = path.resolve(args.find((a, i) => !a.startsWith("--") && !["--photos
 const LANG = opt("--lang", "en");
 const LOCALE = LANG === "he" ? "he-IL" : "en-GB";
 const FROM = opt("--from"), TO = opt("--to");
+if (args.includes("--photos") && (!Number.isInteger(Number(opt("--photos"))) || Number(opt("--photos")) < 1)) {
+  throw new Error("--photos must be a positive integer.");
+}
 const cull = JSON.parse(await fs.readFile(path.join(WORK, "cull.json"), "utf8"));
 
 const MOMENT_SECONDS = 10 * 60;   // frames of one moment are minutes apart at most
@@ -301,6 +304,8 @@ const oneCountry = countryList.length === 1 ? countryList[0][0] : null;
 const draft = {
   title: mainPlace || oneCountry || path.basename(cull.source).replace(/[-_]+/g, " "),
   author: "",
+  showHeadings: false,
+  callouts: false,
   ...(LANG === "he" ? { direction: "rtl", locale: "he-IL" } : {}),
   cover: { photo: cover.best.code },
   ...(titleMoment ? { titlePage: { photo: titleMoment.best.code } } : {}),
@@ -424,6 +429,10 @@ console.log(`${keep.length} kept photos -> ${moments.length} moments (${folded} 
 console.log(`Picked ${pickedAll.length} moments for the draft (${MODE}; ${chapters.length} chapters; aim ${TARGET}, from about ${Math.round(totalDistinct)} distinct scenes):`);
 chapters.forEach((ch, i) => console.log(`  ${pad(i + 1)} ${ch.title} · ${ch.kicker} — ${ch.picks.length} of ${ch.moments.length} moments (~${Math.round(ch.distinct)} distinct)`));
 console.log(`Near-repeats of picked moments left out: ${nearRepeats}`);
+if (pickedAll.length < TARGET || (span < 1 && FAMILY)) {
+  console.log("Review needed: similar backgrounds can hide different people or activities. Inspect more-* and use review.mjs before accepting the draft.");
+  console.log("If the story is under-covered, rerun with --photos N for a larger candidate pool; this is not permission to keep near-duplicates.");
+}
 const noDate = keep.filter((p) => p.dateSource !== "exif").length;
 if (noDate) console.log(`Warning: ${noDate} photos have no camera date; they were placed by file date, which can be wrong.`);
 if (MODE === "year") console.log(`This folder spans ${years.size} years. For one book per year, rerun with --from YYYY-01-01 --to YYYY-12-31.`);

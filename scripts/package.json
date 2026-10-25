@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "edit": "node edit.mjs",
-    "test": "node --test --test-concurrency=1 ../tests/composition.test.mjs ../tests/editor-layouts.test.mjs ../tests/editor-placement.test.mjs ../tests/editor-project.test.mjs ../tests/editor-server.test.mjs ../tests/editor-ui.test.mjs ../tests/render.test.mjs ../tests/sources.test.mjs"
+    "test": "node --test --test-concurrency=1 ../tests/composition.test.mjs ../tests/editor-layouts.test.mjs ../tests/editor-placement.test.mjs ../tests/editor-project.test.mjs ../tests/editor-server.test.mjs ../tests/editor-ui.test.mjs ../tests/render.test.mjs ../tests/review.test.mjs ../tests/sources.test.mjs"
   },
   "engines": {
     "node": ">=22.12"

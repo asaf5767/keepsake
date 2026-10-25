@@ -316,6 +316,7 @@ export function buildSpreadDecor({
   spec,
   direction = "ltr",
   decor = "crafted",
+  callouts = false,
 }) {
   if (decor === "none") {
     return {
@@ -436,9 +437,18 @@ export function buildSpreadDecor({
           color: "#4a3531",
           hidden: false,
         });
+      } else if (!callouts && (cycle === 1 || cycle === 2)) {
+        const w = Math.min(44, pocket.w * 0.65), h = 13;
+        graphics.push({
+          id: gid(graphics.length + 1),
+          kind: cycle === 1 ? "botanical-flower" : "lavender-sprig",
+          box: { x: pocket.x + (pocket.w - w) / 2, y: pocket.y + (pocket.h - h) / 2, w, h },
+          color: "#6d3b5e",
+          hidden: false,
+        });
       } else if (cycle === 1) {
         // English script accent word + watercolor blossom/sprig (like 190625 "Happy" + flower)
-        const words = ["Happy", "Moments", "Relax"];
+        const words = direction === "rtl" ? ["שמחה", "רגעים", "ביחד"] : ["Happy", "Moments", "Relax"];
         const word = words[(index + (recipe === "overlap-story" ? 1 : 0)) % words.length];
         const motif = word === "Relax" ? "lavender-sprig" : "botanical-flower";
         const tw = Math.min(64, pocket.w * 0.85), th = 16;
@@ -521,7 +531,8 @@ export function buildSpreadDecor({
     } else {
       // No open pocket: place a seam sticker badge between neighbouring photos or a header ornament.
       const seam = findPhotoSeam(decoratedFrames, spec);
-      const badgeKinds = ["badge-love-circle", "badge-heart", "badge-love-frame"];
+      const badgeKinds = callouts && direction !== "rtl"
+        ? ["badge-love-circle", "badge-heart", "badge-love-frame"] : ["badge-heart"];
       if (seam && index % 2 === 0) {
         graphics.push({
           id: gid(graphics.length + 1),
@@ -541,10 +552,13 @@ export function buildSpreadDecor({
           : pageStart + W - spec.bleed - spec.margin - gw - 2;
         const gy = spec.bleed + spec.margin + 3;
         const headerMotifs = ["flourish-scroll", "boho-arrow", "lavender-sprig"];
-        graphics.push({
+        const headerBox = { x: +gx.toFixed(2), y: +gy.toFixed(2), w: gw, h: gh };
+        const occupied = [...visible.map(frame => frame.box),
+          ...nextTexts.filter(text => !text.hidden && text.text).map(text => text.box)];
+        if (occupied.every(rect => !overlaps(headerBox, rect, 2))) graphics.push({
           id: gid(graphics.length + 1),
           kind: headerMotifs[index % headerMotifs.length],
-          box: { x: +gx.toFixed(2), y: +gy.toFixed(2), w: gw, h: gh },
+          box: headerBox,
           color: "#3a322d",
           hidden: false,
         });

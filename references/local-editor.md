@@ -16,6 +16,16 @@ Use `--no-open` when another tool will open the printed URL, `--port 0` for any
 free port, or `--project "C:\path\book.project.json"` for a non-default project
 file.
 
+For an agent handoff, use `--port 0 --no-open`, keep the process alive with the
+host's persistent background mechanism, verify HTTP 200 on the printed URL and
+give that full tokenized URL as **Edit your album** beside the PDF. A localhost
+link only works on the machine running the server; remote sandboxes need an
+approved preview tunnel. Do not stop the server immediately after creating a project.
+
+`--prepare-only` creates/loads the saved project and exits without a server.
+Use this for batch project preparation, not as a substitute for the editor link.
+For a custom build directory, pass the matching `--out` to the editor.
+
 The first launch builds the album if current editable layout evidence is not
 available. It then creates `album.project.json`.
 

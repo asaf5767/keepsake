@@ -92,6 +92,8 @@ export function albumFingerprint(album) {
     cover: album.cover,
     titlePage: album.titlePage,
     closingPhoto: album.closing?.photo,
+    ...(album.showHeadings === false ? { showHeadings: false } : {}),
+    ...(album.callouts === true ? { callouts: true } : {}),
     scenes,
     photoSettings: Object.fromEntries([...referenced].sort().map((code) => [code, photoSettings[code] || null])),
   };
@@ -164,6 +166,7 @@ export function createEditorProject({ album, layout, albumPath = "album.json" })
       spec,
       direction: album.direction || "ltr",
       decor: decorMode,
+      callouts: album.callouts === true,
     });
     const wash = scene.wash || fallbackDecor.wash;
     const graphics = (scene.graphics || fallbackDecor.graphics || []).map((graphic, index) => ({
@@ -211,6 +214,8 @@ export function createEditorProject({ album, layout, albumPath = "album.json" })
       subtitle: album.subtitle || "",
       theme: album.theme || "white",
       decor: decorMode,
+      showHeadings: album.showHeadings !== false,
+      callouts: album.callouts === true,
       font: album.font || (album.direction === "rtl" ? "Heebo" : "Montserrat"),
       direction: album.direction || "ltr",
       geometry: spec,
@@ -235,6 +240,9 @@ export function validateEditorProject(project, { album, photoCodes } = {}) {
   if (!Number.isInteger(project.revision) || project.revision < 0) throw new Error("Project revision must be a nonnegative integer.");
   if (!project.book || !["white", "cream", "dark"].includes(project.book.theme)) throw new Error("Project theme is invalid.");
   if (project.book.decor !== undefined && !DECOR_MODES.includes(project.book.decor)) throw new Error("Project decor mode is invalid.");
+  for (const key of ["showHeadings", "callouts"]) {
+    if (project.book[key] !== undefined && typeof project.book[key] !== "boolean") throw new Error(`Project ${key} must be a boolean.`);
+  }
   if (!["Montserrat", "Heebo"].includes(project.book.font)) throw new Error("Project font must be Montserrat or Heebo.");
   if (!["ltr", "rtl"].includes(project.book.direction)) throw new Error("Project direction is invalid.");
   if (typeof project.book.title !== "string" || project.book.title.length > 500 ||
