@@ -162,6 +162,34 @@ test("Storyboard edits persist and export through the browser workflow", { timeo
     const interiorHtml = await fs.readFile(path.join(root, "book", "interior.html"), "utf8");
     assert.match(interiorHtml, /data-wash="rose"/);
     assert.match(interiorHtml, /data-graphic-kind="boho-arrow"/);
+    await page.setViewport({ width: 1440, height: 950 });
+    await page.click('[data-action="style"]');
+    for (const [preset, theme] of [["modern", "white"], ["crafted", "cream"], ["gallery", "dark"]]) {
+      const before = await page.evaluate(() => window.keepsakeEditor.getProject());
+      await page.click(`[data-action="apply-preset"][data-preset="${preset}"]`);
+      const styled = await page.evaluate(() => window.keepsakeEditor.getProject());
+      assert.equal(styled.book.stylePreset, preset);
+      assert.equal(styled.book.theme, theme);
+      assert.deepEqual(styled.order, before.order);
+      assert.deepEqual(styled.spreads[firstId].frames.map(({ mat, ...frame }) => frame),
+        before.spreads[firstId].frames.map(({ mat, ...frame }) => frame));
+      assert.ok(styled.spreads[firstId].texts.some(text => text.text === "Saved in the Keepsake project"));
+      await page.click('[data-action="undo"]');
+      assert.deepEqual(await page.evaluate(() => window.keepsakeEditor.getProject()), before);
+    }
+    await page.click('[data-action="apply-preset"][data-preset="gallery"]');
+    await page.click('[data-action="save"]');
+    await page.waitForFunction(() => !window.keepsakeEditor.isDirty() && window.keepsakeEditor.getProject().revision === 3);
+    await page.reload({ waitUntil: "networkidle0" });
+    await page.waitForFunction(() => !!window.keepsakeEditor);
+    assert.equal(await page.evaluate(() => window.keepsakeEditor.getProject().book.stylePreset), "gallery");
+    await page.click('[data-action="export"]');
+    await page.waitForFunction(() => window.keepsakeEditor.exportRevision() === 3, { timeout: 120000 });
+    const gallery = JSON.parse(await fs.readFile(path.join(root, "book", "layout.json"), "utf8"));
+    assert.equal(gallery.stylePreset, "gallery");
+    assert.equal(gallery.theme, "dark");
+    assert.deepEqual(gallery.scenes[1].frames.map(frame => frame.box), layout.scenes[1].frames.map(frame => frame.box));
+    assert.ok(gallery.scenes.every(scene => scene.frames.every(frame => frame.mat)));
     assert.equal(errors.length, 0, errors.join("\n"));
   } finally {
     if (browser) await browser.close();

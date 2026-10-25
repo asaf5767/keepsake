@@ -30,6 +30,12 @@ crafted layouts automatically. Photo similarity is only a proposal: the agent
 reviews expressions and different groupings, keeps a selection log, and checks
 actual PDF placement—not just browser screenshots.
 
+**Ready-made styles:** choose **Modern** (white, tight borderless grids),
+**Crafted** (cream, watercolor washes and thin white borders), or **Gallery**
+(dark paper and bordered photo-led layouts). Set `"stylePreset": "crafted"` in
+`album.json`, or use **Book style** in the editor. Style switching preserves manual
+positions and crops unless you explicitly choose to reset layouts.
+
 ## How it chooses like a person
 
 - **Date and place.** The date and time come from the camera data in each photo. The town or neighbourhood comes from the GPS position, looked up in a built-in list of 171,000 places. Photos without GPS take the place of the nearest photo in time.
@@ -133,6 +139,15 @@ The scripts process photos locally and do not upload photos or GPS coordinates. 
 - **Phone favourites.** The heart (favourite) from a phone's gallery app is usually not saved inside the photo file. Star ratings from apps like Lightroom are.
 - **iPhone HEIC photos** are converted automatically, but this has not been tested with real HEIC files yet.
 - **Cover.** The cover file is the front only. For a hardcover, use your print service's cover template for the spine and back.
+- **Desktop workflow.** Use a code-capable local assistant with Node.js and Chrome/Edge; ordinary website chat cannot run the local editor. Keep its server process alive while editing.
+- **Apple iCloud.** The public Shared Album importer has fixture coverage, but has not yet been verified with a real shared-album link. Private libraries and ordinary iCloud sharing links are not supported.
+- **Google Photos.** Public album imports follow continuation pages, deduplicate remote IDs and check the advertised item count when available. `source-import.json` records discovered items, downloaded photos, skipped videos and quality fallbacks; incomplete imports fail instead of silently making a partial book. The public-web protocol is unofficial. Live verification covers an 82-item album (80 photos, 2 videos); larger multi-page coverage uses fixtures, not a real large-album run.
+- **Large ZIPs.** ZIP64 archives (typically over 4 GB or 65,535 entries) are not supported; extract them to a local folder first.
+- **Print acceptance.** Confirm trim size, page count, bleed and cover template with your printer; PDF export is not a guarantee that every print service will accept the files.
+
+For a Google Photos import into an old or mixed work folder, choose a fresh
+`--work` directory rather than deleting existing photos. New imports keep an
+ownership sidecar so reruns can replace only files they own.
 - **Local editor bookends.** The current editor freely changes scene spreads. Cover, opening and closing use the production templates; title, subtitle, paper and type still update them.
 
 ## Folder map
@@ -150,6 +165,7 @@ The scripts process photos locally and do not upload photos or GPS coordinates. 
 | `scripts/editor-server.mjs` | Tokenized loopback server for one work folder |
 | `scripts/editor-layouts.mjs` | Photo-aware whole-spread layout choices |
 | `scripts/editor-decor.mjs` | Watercolor page washes, vector graphics, badges and callout presets |
+| `scripts/style-presets.mjs` | Shared Modern, Crafted and Gallery defaults, styling and safe-layout preferences |
 | `scripts/editor-placement.mjs` | Crop geometry shared by editor and renderer |
 | `scripts/composition.mjs` | Shared subject-protected crop geometry for scoring and rendering |
 | `editor/` | Storyboard browser UI |

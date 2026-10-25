@@ -39,10 +39,15 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
         { title: "Second scene", photos: ["P004", { id: "P005", role: "main" }, "P006"] },
       ] }],
     };
-    for (const mode of ["compact", "rtl", "quiet", "color"]) {
+    for (const mode of ["compact", "rtl", "quiet", "color", "modern", "crafted", "gallery"]) {
       const dir = path.join(root, mode);
       await fs.mkdir(dir);
       const album = structuredClone(base);
+      const preset = ["modern", "crafted", "gallery"].includes(mode);
+      if (preset) {
+        album.stylePreset = mode;
+        if (mode === "crafted") album.direction = "rtl";
+      }
       if (mode === "rtl") {
         album.direction = "rtl";
         album.title = "ספר תמונות";
@@ -62,6 +67,12 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
       assert.equal(run.status, 0, `${mode}: ${run.error || ""}\n${run.stdout}\n${run.stderr}`);
       const out = path.join(dir, "book");
       const layout = JSON.parse(await fs.readFile(path.join(out, "layout.json"), "utf8"));
+      if (preset) {
+        assert.equal(layout.stylePreset, mode);
+        assert.equal(layout.theme, { modern: "white", crafted: "cream", gallery: "dark" }[mode]);
+        assert.ok(layout.scenes.every(scene => !scene.texts.some(text => !text.hidden && text.text)));
+        if (mode === "gallery") assert.ok(layout.scenes.every(scene => scene.frames.every(frame => frame.mat)));
+      }
       if (mode === "quiet") {
         assert.equal(layout.scenes[0].recipe, "framed-haven");
         assert.ok(layout.scenes.every(scene => scene.texts.every(text => text.hidden || !text.text)));
@@ -115,7 +126,7 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
         title.text = editedTitle;
         const moved = spread.frames[0];
         moved.photo = "P001";
-        moved.box.x += 8;
+        moved.box.x += moved.box.x + moved.box.w + 8 > 2 * (album.trimMm + 6) ? -8 : 8;
         const saved = await saveEditorProject(projectFile, project, {
           expectedRevision: 0,
           album,
@@ -132,7 +143,7 @@ test("photo-first, RTL and legacy PDF output preserve the rendering contract", {
         assert.equal(editedLayout.scenes[0].frames[0].photo, "P001");
         assert.equal(editedLayout.scenes[0].frames[0].box.x, moved.box.x);
         assert.equal(editedLayout.scenes[0].texts.find((text) => text.role === "title").text, editedTitle);
-        if (mode !== "quiet") assert.match(await fs.readFile(path.join(editedOut, "interior.html"), "utf8"), new RegExp(editedTitle));
+        if (mode !== "quiet" && !preset) assert.match(await fs.readFile(path.join(editedOut, "interior.html"), "utf8"), new RegExp(editedTitle));
         const editedPdf = await PDFDocument.load(await fs.readFile(path.join(editedOut, "interior.pdf")));
         assert.equal(editedPdf.getPageCount(), layout.pageCount);
         const expected = editedLayout.placements.find(placement => placement.page === 1).rect;

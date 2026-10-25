@@ -8,6 +8,7 @@ import {
 } from "/editor-decor.mjs";
 import { makeEditorLayouts } from "/editor-layouts.mjs";
 import { placementWarnings, protectedBounds, resolveFramePlacement } from "/editor-placement.mjs";
+import { PAPER_THEMES, STYLE_PRESETS, applyStylePreset, recolorBook, stylePreset } from "/style-presets.mjs";
 
 const token = new URL(location.href).searchParams.get("token");
 if (!token) throw new Error("This Keepsake editor link has no session token.");
@@ -24,11 +25,7 @@ async function api(path, options = {}) {
 const data = await api("/api/project");
 const app = document.querySelector("#app");
 const byPhoto = new Map(data.photos.map((photo) => [photo.id, photo]));
-const themes = {
-  white: { name: "Clean white", paper: "#ffffff", ink: "#141414", muted: "#7c7c7c" },
-  cream: { name: "Warm cream", paper: "#f6f2ea", ink: "#1b1a18", muted: "#857e72" },
-  dark: { name: "After dark", paper: "#121212", ink: "#f3f3f3", muted: "#9b9b9b" },
-};
+const themes = PAPER_THEMES;
 let project = data.project;
 let dirty = false;
 let saving = false;
@@ -45,6 +42,7 @@ const ui = {
   libraryFilter: "scene",
   query: "",
   draggedSpread: null,
+  resetPresetLayouts: false,
 };
 let pointer = null;
 let toastTimer;
@@ -308,6 +306,7 @@ function layoutOptions() {
     decor: project.book.decor || "crafted",
     showHeadings: project.book.showHeadings !== false,
     callouts: project.book.callouts === true,
+    frameMat: project.book.stylePreset === undefined ? undefined : stylePreset(project.book.stylePreset).frameMat,
     spreadIndex,
   });
 }
@@ -436,8 +435,15 @@ function inspector() {
 
 function stylePanel() {
   const decorMode = project.book.decor || "crafted";
-  return `<div class="panel-heading"><div class="eyebrow">Whole book</div><h2>Paper, type &amp; decor</h2>
-    <p>These settings also update the existing cover, opening and closing templates when you export.</p></div>
+  return `<div class="panel-heading"><div class="eyebrow">Whole book</div><h2>Ready-made styles</h2>
+    <p>${project.book.stylePreset ? `${esc(stylePreset(project.book.stylePreset).name)} style` : "Custom / existing design"}. Apply a complete look, then fine-tune it below. Cover paper and type update on export.</p></div>
+    <div class="preset-list">${Object.entries(STYLE_PRESETS).map(([key, preset]) =>
+      `<button class="preset-choice ${project.book.stylePreset === key ? "active" : ""}" data-action="apply-preset" data-preset="${key}">
+        <span class="preset-swatch" style="background:${themes[preset.theme].paper};color:${themes[preset.theme].ink}"><span>${preset.frameMat ? "&#9635;" : "&#9632;"}</span> Aa</span>
+        <span><strong>${preset.name}</strong><small>${preset.description}</small></span>
+      </button>`).join("")}</div>
+    <label class="field preset-reset"><input type="checkbox" data-preset-reset ${ui.resetPresetLayouts ? "checked" : ""}> Also reset photo layouts and crops</label>
+    <p class="preset-note">${ui.resetPresetLayouts ? "Preset layouts will replace photo positions and crops across the book. Photos, wording and order stay. Review every spread; Undo is available." : "Keeps your photo positions, crops, wording and order. Replaces page washes, generated ornaments and borders; custom graphics stay. Undo is available."}</p>
     <label class="field">Book title<input data-book-field="title" value="${esc(project.book.title)}"></label>
     <label class="field">Subtitle<input data-book-field="subtitle" value="${esc(project.book.subtitle)}"></label>
     <label class="field"><input type="checkbox" data-book-check="showHeadings" ${project.book.showHeadings !== false ? "checked" : ""}> Show spread headings</label>
@@ -611,6 +617,20 @@ function action(name, element) {
     if (ui.view === "board") { ui.view = "editor"; ui.active = project.order[0]; }
     ui.panel = "style"; ui.selected = null; return render();
   }
+  if (name === "apply-preset") {
+    try {
+      const next = applyStylePreset(project, element.dataset.preset, {
+        photos: byPhoto, resetLayouts: ui.resetPresetLayouts,
+      });
+      remember(() => { project = next; ui.previewLayout = null; ui.selected = null; });
+      ui.resetPresetLayouts = false;
+      render();
+      toast(`${stylePreset(element.dataset.preset).name} applied. Review spreads, then save.`);
+    } catch (error) {
+      toast(error.message, true);
+    }
+    return;
+  }
   if (name === "add-graphic") {
     const kind = element.dataset.graphic;
     const entry = GRAPHICS[kind];
@@ -726,15 +746,8 @@ function action(name, element) {
     return remember(() => { layer.hidden = true; ui.selected = null; });
   }
   if (name === "theme") return remember(() => {
-    const previous = currentTheme();
-    project.book.theme = element.dataset.theme;
-    const next = currentTheme();
-    for (const id of project.order) {
-      for (const text of project.spreads[id].texts) {
-        if (text.role === "title" || text.color.toLowerCase() === previous.ink.toLowerCase()) text.color = next.ink;
-        else if (text.role === "kicker" || text.color.toLowerCase() === previous.muted.toLowerCase()) text.color = next.muted;
-      }
-    }
+    recolorBook(project, element.dataset.theme);
+    delete project.book.stylePreset;
   }, { invalidateReview: "all" });
 }
 
@@ -745,6 +758,10 @@ app.addEventListener("click", (event) => {
 
 app.addEventListener("change", (event) => {
   const element = event.target;
+  if (element.matches("[data-preset-reset]")) {
+    ui.resetPresetLayouts = element.checked;
+    return render();
+  }
   if (element.dataset.layerCheck) {
     const layer = selectedLayer();
     if (!layer) return;
@@ -780,6 +797,7 @@ app.addEventListener("change", (event) => {
     const mode = element.value;
     return remember(() => {
       project.book.decor = mode;
+      delete project.book.stylePreset;
       const spec = geometry();
       project.order.forEach((id, index) => {
         const spread = project.spreads[id];
@@ -804,7 +822,10 @@ app.addEventListener("change", (event) => {
   if (element.dataset.layerField) return mutateLayer(element.dataset.layerField, element.value);
   if (element.dataset.bookField) {
     const field = element.dataset.bookField;
-    return remember(() => { project.book[field] = element.value; }, { invalidateReview: "all" });
+    return remember(() => {
+      project.book[field] = element.value;
+      if (field === "font") delete project.book.stylePreset;
+    }, { invalidateReview: "all" });
   }
 });
 

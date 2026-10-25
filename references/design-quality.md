@@ -20,6 +20,10 @@ for Keepsake; running or installing Impeccable is not required.
 
 ## Compose a book, not a template gallery
 
+- Start with a built-in Modern, Crafted or Gallery preset. Keep that visual
+  language across the book; the content chooses among its safe layout preferences.
+  A preset does not justify an unsafe crop or replacing manual edits.
+
 - Keep supporting photographs together with aligned edges and tight, consistent
   gaps. Avoid a chain of isolated little images surrounded by accidental holes.
 - Alternate dense mosaics with quieter hero spreads when the content warrants it.

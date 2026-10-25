@@ -4,6 +4,7 @@
 
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import zlib from "node:zlib";
 
@@ -71,7 +72,7 @@ export function detectSourceKind(input) {
 
 // ─── Concurrency helper ─────────────────────────────────────────────────────
 
-async function downloadPool(items, concurrency, worker) {
+async function downloadPool(items, concurrency, worker, progressLabel = "downloaded") {
   const results = new Array(items.length);
   let next = 0, completed = 0;
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
@@ -80,7 +81,7 @@ async function downloadPool(items, concurrency, worker) {
       results[idx] = await worker(items[idx], idx);
       completed++;
       if (completed % 10 === 0 || completed === items.length) {
-        process.stdout.write(`\r  downloaded ${completed}/${items.length}`);
+        process.stdout.write(`\r  ${progressLabel} ${completed}/${items.length}`);
       }
     }
   }));
@@ -262,118 +263,418 @@ async function fetchGoogleDriveFolder(url, destDir, fetchImpl = fetch) {
 
 // ─── Google Photos Shared Album ─────────────────────────────────────────────
 
-// Walk nested AF_initDataCallback arrays to extract Google Photos image items:
-// Each photo item typically contains a base URL ("https://lh3.googleusercontent.com/pw/...")
-// along with [url, width, height, ...] and a parent record carrying creation timestamp in ms.
+function readJsonArray(text, start) {
+  let depth = 0, inString = false, escaped = false;
+  if (text[start] !== "[") throw new Error("Missing JSON array.");
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "[") depth++;
+    else if (c === "]" && --depth === 0) {
+      try { return { data: JSON.parse(text.slice(start, i + 1)), end: i + 1 }; }
+      catch { throw new Error("Invalid JSON array in album response."); }
+    }
+  }
+  throw new Error("Truncated JSON array.");
+}
+
+// snAcKc uses the same tuple in bootstrap and continuation responses:
+// [unused, media records, continuation, album metadata]. Count includes videos.
+function parseGooglePhotosPage(data) {
+  if (!Array.isArray(data) || data.length < 3 ||
+      !(Array.isArray(data[1]) || data[1] === null) ||
+      !(data[2] === null || typeof data[2] === "string")) {
+    throw new Error("Unrecognized album page or missing continuation/completion marker.");
+  }
+  const metadata = data[3];
+  const count = metadata?.[21];
+  if (count != null && (!Number.isSafeInteger(count) || count < 0)) {
+    throw new Error("Unrecognized expected album item count.");
+  }
+  const items = (data[1] || []).map((row, idx) => {
+    const media = row?.[1];
+    if (!Array.isArray(row) || typeof row[0] !== "string" || !row[0] ||
+        !Array.isArray(media) || typeof media[0] !== "string" ||
+        !/^https:\/\/lh[3-6]\.googleusercontent\.com\//.test(media[0]) ||
+        !Number.isFinite(media[1]) || media[1] <= 0 ||
+        !Number.isFinite(media[2]) || media[2] <= 0) {
+      throw new Error(`Unrecognized media record #${idx + 1}; refusing to skip an unknown item.`);
+    }
+    return {
+      remoteId: row[0],
+      baseUrl: media[0].replace(/=[^/]*$/, ""),
+      width: media[1],
+      height: media[2],
+      timestampMs: Number.isFinite(row[2]) && Number.isFinite(new Date(row[2]).getTime()) ? row[2] : null,
+      isVideo: row.some((part) => part && !Array.isArray(part) && Array.isArray(part["76647426"])),
+    };
+  });
+  return {
+    items,
+    nextPageToken: data[2] || null,
+    expectedItems: count ?? null,
+    albumId: typeof metadata?.[0] === "string" ? metadata[0] : null,
+    authKey: typeof metadata?.[19] === "string" ? metadata[19] : null,
+  };
+}
+
+export function parseGooglePhotosSharedPage(html) {
+  const text = String(html || "");
+  const callbacks = /AF_initDataCallback\(\s*\{[^<]*?\bdata\s*:\s*/g;
+  for (const match of text.matchAll(callbacks)) {
+    const { data } = readJsonArray(text, match.index + match[0].length);
+    if (Array.isArray(data[1]) || (data[1] === null && Array.isArray(data[3]))) {
+      return parseGooglePhotosPage(data);
+    }
+  }
+  throw new Error("Could not find structured Google Photos album data. Use an already-public shared album link or export the album as a ZIP.");
+}
+
 export function parseGooglePhotosSharedHtml(html) {
-  const items = [];
-  const seenUrls = new Set();
+  const seen = new Set();
+  return parseGooglePhotosSharedPage(html).items.filter((item) => {
+    if (item.isVideo || seen.has(item.remoteId)) return false;
+    seen.add(item.remoteId);
+    return true;
+  });
+}
 
-  function walk(node, parent) {
-    if (!Array.isArray(node)) return;
-    if (
-      typeof node[0] === "string" &&
-      /^https:\/\/lh3\.googleusercontent\.com\/(pw\/|[A-Za-z0-9_-]{24,})/.test(node[0]) &&
-      typeof node[1] === "number" &&
-      typeof node[2] === "number" &&
-      node[1] >= 200 &&
-      node[2] >= 200
-    ) {
-      const baseUrl = node[0].replace(/=[^/]*$/, "");
-      if (!seenUrls.has(baseUrl)) {
-        seenUrls.add(baseUrl);
-        let timestampMs = null;
-        if (Array.isArray(parent)) {
-          const tsCandidate = parent.find(
-            (v) => typeof v === "number" && v >= 946684800000 && v <= 4102444800000
-          );
-          if (tsCandidate) timestampMs = tsCandidate;
-        }
-        items.push({
-          baseUrl,
-          width: node[1],
-          height: node[2],
-          timestampMs,
-        });
+export function parseGooglePhotosBatchResponse(body) {
+  const text = String(body || "").replace(/^\s*\)\]\}'/, "");
+  const payloads = [];
+  let pos = 0;
+  while (pos < text.length) {
+    // batchexecute includes XSSI protection and decimal length lines between JSON frames.
+    const prefix = text.slice(pos).match(/^\s*(?:\d+\s+)?/)[0];
+    pos += prefix.length;
+    if (pos === text.length) break;
+    const { data, end } = readJsonArray(text, pos);
+    for (const row of data) {
+      if (Array.isArray(row) && row[0] === "wrb.fr" && row[1] === "snAcKc") {
+        if (typeof row[2] !== "string") throw new Error("Album continuation was rejected by Google Photos.");
+        try { payloads.push(JSON.parse(row[2])); }
+        catch { throw new Error("Invalid JSON payload in album continuation."); }
       }
-      return;
     }
-    for (const child of node) {
-      if (Array.isArray(child)) walk(child, node);
-    }
+    pos = end;
   }
+  if (payloads.length !== 1) throw new Error("Missing or ambiguous snAcKc album continuation response.");
+  return parseGooglePhotosPage(payloads[0]);
+}
 
-  const blockRe = /AF_initDataCallback\(\s*\{[\s\S]*?data\s*:\s*(\[[\s\S]*?\])\s*(?:,\s*sideChannel\s*:[\s\S]*?)?\}\s*\)\s*;/g;
-  for (const match of String(html || "").matchAll(blockRe)) {
+function googlePhotosRequestContext(html, finalUrl, page) {
+  const url = new URL(finalUrl);
+  if (url.hostname !== "photos.google.com" || !/^\/share\/[^/]+\/?$/.test(url.pathname)) {
+    throw new Error("The shared link did not resolve to a public photos.google.com/share/ album.");
+  }
+  const globalData = html.match(/(?:window\.)?WIZ_global_data\s*=\s*(\{[^\n]*?\});/);
+  let wiz = {};
+  try { if (globalData) wiz = JSON.parse(globalData[1]); }
+  catch { throw new Error("Invalid public-page request context."); }
+  if (typeof wiz.FdrFJe !== "string" || typeof wiz.cfb2h !== "string") {
+    throw new Error("Missing public-page request context required to continue the album.");
+  }
+  return {
+    albumId: page.albumId || url.pathname.split("/")[2],
+    authKey: page.authKey || url.searchParams.get("key"),
+    sourcePath: url.pathname,
+    sessionId: wiz.FdrFJe,
+    build: wiz.cfb2h,
+  };
+}
+
+async function fetchGooglePhotosPage(context, token, fetchImpl) {
+  const endpoint = new URL("https://photos.google.com/_/PhotosUi/data/batchexecute");
+  endpoint.search = new URLSearchParams({
+    rpcids: "snAcKc", "source-path": context.sourcePath,
+    "f.sid": context.sessionId, bl: context.build, hl: "en-US", rt: "c",
+  }).toString();
+  const body = new URLSearchParams({
+    "f.req": JSON.stringify([[["snAcKc", JSON.stringify([
+      context.albumId, token, null, context.authKey,
+    ]), null, "generic"]]]),
+  });
+  let resp;
+  try {
+    resp = await fetchImpl(endpoint.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "User-Agent": USER_AGENT, "X-Same-Domain": "1",
+      },
+      body: body.toString(),
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch {
+    throw new Error("Continuation request failed (network error or timeout).");
+  }
+  if (!resp.ok) throw new Error(`Continuation request returned HTTP ${resp.status}.`);
+  let text;
+  try { text = await resp.text(); }
+  catch { throw new Error("Continuation response could not be read completely."); }
+  return parseGooglePhotosBatchResponse(text);
+}
+
+function supportedImageBytes(buf, type) {
+  if (type === "image/jpeg" || type === "image/jpg") return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  if (type === "image/png") return buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (type === "image/webp") return buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP";
+  if (type === "image/tiff") return ["49492a00", "4d4d002a"].includes(buf.subarray(0, 4).toString("hex"));
+  if (type === "image/heic" || type === "image/heif") return buf.toString("ascii", 4, 8) === "ftyp";
+  return false;
+}
+
+async function downloadGooglePhoto(item, index, stagingDir, fetchImpl) {
+  const attempts = [];
+  let downloaded;
+  for (const [suffix, quality] of [["=d", "download-endpoint"], ["=w4096-h4096", "fallback-4096"]]) {
     try {
-      const parsed = JSON.parse(match[1]);
-      walk(parsed, null);
-    } catch {}
-  }
-
-  // Fallback regex if Google changes wrapper formatting around lh3.googleusercontent.com/pw/ URLs
-  if (!items.length) {
-    const urlRe = /"(https:\/\/lh3\.googleusercontent\.com\/pw\/[A-Za-z0-9_-]+)"\s*,\s*(\d{3,5})\s*,\s*(\d{3,5})/g;
-    for (const m of String(html || "").matchAll(urlRe)) {
-      const baseUrl = m[1];
-      if (seenUrls.has(baseUrl)) continue;
-      seenUrls.add(baseUrl);
-      items.push({
-        baseUrl,
-        width: Number(m[2]),
-        height: Number(m[3]),
-        timestampMs: null,
+      const response = await fetchImpl(`${item.baseUrl}${suffix}`, {
+        headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(120000),
       });
+      const type = (response.headers?.get("content-type") || "").split(";")[0].trim().toLowerCase();
+      if (!response.ok || !CONTENT_TYPE_EXT[type]) {
+        attempts.push(`${quality}: HTTP ${response.status}, ${CONTENT_TYPE_EXT[type] ? "image" : "unsupported/non-image response"}`);
+        try { await response.body?.cancel(); } catch {}
+        continue;
+      }
+      const buf = Buffer.from(await response.arrayBuffer());
+      if (!supportedImageBytes(buf, type)) {
+        attempts.push(`${quality}: empty or invalid image bytes`);
+        continue;
+      }
+      downloaded = { buf, type, quality };
+      break;
+    } catch {
+      attempts.push(`${quality}: network or response-read failure`);
     }
   }
+  if (!downloaded) throw new Error(`Photo #${index + 1} download failed (${attempts.join("; ")}).`);
+  const { buf, type, quality } = downloaded;
+  const file = `gphoto-${String(index + 1).padStart(4, "0")}${CONTENT_TYPE_EXT[type]}`;
+  const outPath = path.join(stagingDir, file);
+  try {
+    await fs.writeFile(outPath, buf, { flag: "wx" });
+    if (item.timestampMs !== null) {
+      const dt = new Date(item.timestampMs);
+      await fs.utimes(outPath, dt, dt);
+    }
+  } catch {
+    throw new Error(`Photo #${index + 1} could not be saved locally; check work-directory permissions and free disk space.`);
+  }
+  return {
+    remoteId: item.remoteId, file, quality, sourceWidth: item.width, sourceHeight: item.height,
+    bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex"),
+    ...(quality === "fallback-4096" ? { fallbackReason: attempts.join("; ") } : {}),
+  };
+}
 
-  return items;
+async function publishGooglePhotos(stagingDir, destDir, ownershipPath, downloads, commitReport) {
+  let existing = null;
+  try { existing = await fs.lstat(destDir); } catch (error) { if (error.code !== "ENOENT") throw error; }
+  let previousOwnership = null, owned;
+  try {
+    previousOwnership = await fs.lstat(ownershipPath);
+    if (previousOwnership.isFile() && !previousOwnership.isSymbolicLink()) {
+      try { owned = JSON.parse(await fs.readFile(ownershipPath, "utf8")); } catch {}
+    }
+  } catch (error) { if (error.code !== "ENOENT") throw error; }
+  const refuseMixed = () => {
+    throw new Error('The work directory already contains photos or ownership metadata not owned by this importer. Use a fresh "--work" directory to avoid mixing albums.');
+  };
+  if (previousOwnership && (owned?.kind !== "google-photos" || !Array.isArray(owned.files) || !owned.sha256)) refuseMixed();
+  if (existing) {
+    const entries = existing.isDirectory() && !existing.isSymbolicLink()
+      ? await fs.readdir(destDir, { withFileTypes: true }) : null;
+    if (!entries || !owned ||
+        entries.length !== owned.files.length ||
+        !entries.every((entry) => entry.isFile() && owned.files.includes(entry.name))) {
+      refuseMixed();
+    }
+    for (const entry of entries) {
+      const digest = createHash("sha256").update(await fs.readFile(path.join(destDir, entry.name))).digest("hex");
+      if (owned.sha256[entry.name] !== digest) refuseMixed();
+    }
+  }
+  const backup = `${stagingDir}-previous`;
+  const stagedOwnership = `${stagingDir}-ownership.json`;
+  const ownershipBackup = `${stagingDir}-previous-ownership.json`;
+  let savedPhotos = false, savedOwnership = false, installedPhotos = false, installedOwnership = false;
+  try {
+    await fs.writeFile(stagedOwnership, JSON.stringify({
+      kind: "google-photos", files: downloads.map((item) => item.file),
+      sha256: Object.fromEntries(downloads.map((item) => [item.file, item.sha256])),
+    }, null, 2), { flag: "wx" });
+    if (previousOwnership) {
+      await fs.rename(ownershipPath, ownershipBackup);
+      savedOwnership = true;
+    }
+    if (existing) {
+      await fs.rename(destDir, backup);
+      savedPhotos = true;
+    }
+    await fs.rename(stagingDir, destDir);
+    installedPhotos = true;
+    await fs.rename(stagedOwnership, ownershipPath);
+    installedOwnership = true;
+    await commitReport();
+  } catch (cause) {
+    try {
+      if (installedOwnership) await fs.rm(ownershipPath);
+      if (installedPhotos) await fs.rename(destDir, stagingDir);
+      if (savedPhotos) await fs.rename(backup, destDir);
+      if (savedOwnership) await fs.rename(ownershipBackup, ownershipPath);
+    } catch {
+      throw new Error(`Publication rollback could not finish. Previous album backups were preserved as ${path.basename(backup)} and ${path.basename(ownershipBackup)}; preserve them and use a fresh "--work" directory.`);
+    }
+    throw cause;
+  } finally {
+    await fs.rm(stagedOwnership, { force: true });
+  }
+  const warnings = [];
+  for (const [needed, location] of [[savedPhotos, backup], [savedOwnership, ownershipBackup]]) {
+    if (!needed) continue;
+    try { await fs.rm(location, { recursive: true, force: true }); }
+    catch {
+      warnings.push(`The completed import is ready, but a previous import backup could not be removed: ${path.basename(location)}.`);
+    }
+  }
+  return warnings;
 }
 
 async function fetchGooglePhotosAlbum(url, destDir, fetchImpl = fetch) {
-  const resp = await fetchImpl(url, {
-    redirect: "follow",
-    headers: {
-      "User-Agent": USER_AGENT,
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-  });
-  if (!resp.ok) {
-    throw new Error(`Google Photos album link returned HTTP ${resp.status}. Make sure link sharing is enabled.`);
+  const workDir = path.dirname(destDir);
+  await fs.mkdir(workDir, { recursive: true });
+  const lockPath = path.join(workDir, ".google-photos-import.lock");
+  let lock;
+  try { lock = await fs.open(lockPath, "wx"); }
+  catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    throw new Error('Another Google Photos import may be using this "--work" directory. Use a fresh "--work" directory, or remove .google-photos-import.lock only after confirming no import is running.');
   }
-  const html = await resp.text();
-  const items = parseGooglePhotosSharedHtml(html);
-  if (!items.length) {
-    throw new Error(
-      "Could not find photos in this Google Photos link. In Google Photos, open the album → Share → Create link, and paste that link."
-    );
+  const reportPath = path.join(workDir, "source-import.json");
+  const report = {
+    schemaVersion: 1, kind: "google-photos", status: "enumerating",
+    expectedItems: null, discoveredItems: 0, duplicateItems: 0, pages: [],
+    paginationComplete: false, completenessEvidence: null,
+    photoItems: 0, skippedVideos: 0, downloadedItems: 0,
+    downloadQuality: { downloadEndpoint: 0, fallback4096: 0, originalQualityVerified: false },
+    downloads: [], failures: [], warnings: [],
+  };
+  let stagingDir, stage = "enumeration", pageNumber = 1;
+  try {
+    await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
+    let resp, html;
+    try {
+      resp = await fetchImpl(url, {
+        redirect: "follow",
+        headers: { "User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9" },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (resp.ok) html = await resp.text();
+    } catch { throw new Error("Public album request failed (network error, timeout or unreadable response)."); }
+    if (!resp.ok) throw new Error(`Public album returned HTTP ${resp.status}; check that this link is already publicly accessible.`);
+    let page = parseGooglePhotosSharedPage(html);
+    const context = page.nextPageToken ? googlePhotosRequestContext(html, resp.url || url, page) : null;
+    const seenTokens = new Set(), items = new Map();
+    while (true) {
+      if (page.expectedItems !== null) {
+        if (report.expectedItems !== null && page.expectedItems !== report.expectedItems) {
+          throw new Error("Album expected item count changed during pagination; retry after album edits finish.");
+        }
+        report.expectedItems = page.expectedItems;
+      }
+      if (context && page.albumId && page.albumId !== context.albumId) {
+        throw new Error("Continuation returned a different album.");
+      }
+      let duplicates = 0;
+      for (const item of page.items) {
+        if (items.has(item.remoteId)) {
+          if (items.get(item.remoteId).isVideo !== item.isVideo) {
+            throw new Error("A remote item changed media type during pagination; retry after album edits finish.");
+          }
+          duplicates++;
+        }
+        else items.set(item.remoteId, item);
+      }
+      report.discoveredItems = items.size;
+      report.duplicateItems += duplicates;
+      report.pages.push({
+        page: pageNumber, items: page.items.length, uniqueItems: page.items.length - duplicates,
+        duplicateItems: duplicates, hasContinuation: Boolean(page.nextPageToken),
+      });
+      report.skippedVideos = [...items.values()].filter((item) => item.isVideo).length;
+      report.photoItems = items.size - report.skippedVideos;
+      if (report.expectedItems !== null && items.size > report.expectedItems) {
+        throw new Error(`Album count mismatch: expected ${report.expectedItems} items but discovered ${items.size} unique IDs.`);
+      }
+      if (!page.nextPageToken) break;
+      if (!page.items.length) throw new Error("Empty album page still advertises a continuation; completeness cannot be established.");
+      if (seenTokens.has(page.nextPageToken)) throw new Error("Repeated album continuation token; refusing a truncated or looping import.");
+      if (duplicates === page.items.length) throw new Error("Album continuation made no progress (only duplicate IDs); completeness cannot be established.");
+      seenTokens.add(page.nextPageToken);
+      await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
+      pageNumber++;
+      page = await fetchGooglePhotosPage(context, page.nextPageToken, fetchImpl);
+    }
+    if (report.expectedItems !== null && items.size !== report.expectedItems) {
+      throw new Error(`Album count mismatch: expected ${report.expectedItems} items but discovered ${items.size} unique IDs at the terminal page.`);
+    }
+    report.paginationComplete = true;
+    report.completenessEvidence = report.expectedItems === null
+      ? "terminal-page; expected count unavailable" : "expected-count-and-terminal-page";
+    const photos = [...items.values()].filter((item) => !item.isVideo);
+    if (!photos.length) throw new Error(`No supported still photos found (${report.skippedVideos} video items skipped).`);
+    stage = "download";
+    report.status = "downloading";
+    await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
+    stagingDir = await fs.mkdtemp(path.join(workDir, ".google-photos-import-"));
+    console.log(`Downloading ${photos.length} photos from ${report.pages.length} Google Photos album page(s); ${report.skippedVideos} videos skipped...`);
+    const results = await downloadPool(photos, 6, async (item, idx) => {
+      try { return await downloadGooglePhoto(item, idx, stagingDir, fetchImpl); }
+      catch (error) {
+        report.failures.push({ stage, item: idx + 1, message: error.message });
+        return null;
+      }
+    }, "processed");
+    report.downloads = results.filter(Boolean);
+    report.downloadedItems = report.downloads.length;
+    report.downloadQuality.downloadEndpoint = report.downloads.filter((item) => item.quality === "download-endpoint").length;
+    report.downloadQuality.fallback4096 = report.downloads.filter((item) => item.quality === "fallback-4096").length;
+    if (report.failures.length) throw new Error(`${report.failures.length} photo download(s) failed; ${report.downloadedItems}/${report.photoItems} downloaded. No partial album was published.`);
+    stage = "publish";
+    report.warnings = await publishGooglePhotos(stagingDir, destDir, path.join(workDir, ".google-photos-ownership.json"),
+      report.downloads, async () => {
+        report.status = "complete";
+        await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
+      });
+    stagingDir = null;
+    if (report.warnings.length) {
+      for (const warning of report.warnings) console.warn(warning);
+      try { await fs.writeFile(reportPath, JSON.stringify(report, null, 2)); }
+      catch { console.warn("Could not add backup-cleanup warnings to the completed source-import.json report."); }
+    }
+    return { report, reportPath };
+  } catch (cause) {
+    report.status = "failed";
+    report.failures.push({ stage, ...(stage === "enumeration" ? { page: pageNumber } : {}), message: cause.message });
+    await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
+    const error = new Error(`Google Photos import incomplete: ${cause.message} Retry with the public shared link or export the album from Google Photos as a ZIP. See source-import.json for counts and failures.`);
+    error.importReport = report;
+    error.importReportPath = reportPath;
+    throw error;
+  } finally {
+    try {
+      if (stagingDir) await fs.rm(stagingDir, { recursive: true, force: true });
+    } finally {
+      try { await lock.close(); }
+      finally { await fs.rm(lockPath, { force: true }); }
+    }
   }
-
-  await fs.mkdir(destDir, { recursive: true });
-  console.log(`Downloading ${items.length} photos from Google Photos shared album...`);
-
-  const files = await downloadPool(items, 6, async (item, idx) => {
-    const num = String(idx + 1).padStart(4, "0");
-    // Try `=d` first (original file with EXIF intact), then fall back to `=w4096-h4096`
-    let imgResp = await fetchImpl(`${item.baseUrl}=d`, { headers: { "User-Agent": USER_AGENT } });
-    let ctype = (imgResp.headers?.get("content-type") || "").split(";")[0].trim().toLowerCase();
-    if (!imgResp.ok || !ctype.startsWith("image/")) {
-      imgResp = await fetchImpl(`${item.baseUrl}=w4096-h4096`, { headers: { "User-Agent": USER_AGENT } });
-      ctype = (imgResp.headers?.get("content-type") || "").split(";")[0].trim().toLowerCase();
-    }
-    if (!imgResp.ok) throw new Error(`Failed to download Google Photos item #${idx + 1} (${imgResp.status}).`);
-    const ext = CONTENT_TYPE_EXT[ctype] || ".jpg";
-    const outPath = path.join(destDir, `gphoto-${num}${ext}`);
-    const buf = Buffer.from(await imgResp.arrayBuffer());
-    await fs.writeFile(outPath, buf);
-    if (item.timestampMs) {
-      const dt = new Date(item.timestampMs);
-      try { await fs.utimes(outPath, dt, dt); } catch {}
-    }
-    return outPath;
-  });
-
-  return files.filter(Boolean);
 }
 
 // ─── Apple Photos / iCloud Shared Album ─────────────────────────────────────
@@ -522,8 +823,8 @@ export async function resolvePhotoSource(sourceInput, { workDir: explicitWorkDir
   }
 
   if (kind === "google-photos") {
-    await fetchGooglePhotosAlbum(sourceInput, destDir, fetchImpl);
-    return { kind, srcDir: destDir, workDir, sourceLabel: sourceInput };
+    const { report: importReport, reportPath: importReportPath } = await fetchGooglePhotosAlbum(sourceInput, destDir, fetchImpl);
+    return { kind, srcDir: destDir, workDir, sourceLabel: sourceInput, importReport, importReportPath };
   }
 
   if (kind === "icloud-shared") {

@@ -30,6 +30,11 @@ const resolvedSource = await resolvePhotoSource(SOURCE, { workDir: opt("--work",
 const SRC = resolvedSource.srcDir;
 const WORK = resolvedSource.workDir;
 const STRICT = flag("--strict");
+if (resolvedSource.importReport) {
+  const report = resolvedSource.importReport;
+  console.log(`Source import: ${report.status}; ${report.downloadedItems}/${report.photoItems} photos downloaded, ${report.skippedVideos} videos skipped; ${report.discoveredItems}/${report.expectedItems ?? "unknown"} album items across ${report.pages.length} page(s), ${report.duplicateItems} duplicate IDs.`);
+  console.log(`Download quality: ${report.downloadQuality.fallback4096} fallback 4096px derivatives; original quality is not verified. Evidence: ${resolvedSource.importReportPath}`);
+}
 
 const EXTS = new Set([".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".tif", ".tiff"]);
 const T = {
@@ -345,6 +350,7 @@ const clean = (r) => ({
 });
 await fs.writeFile(path.join(WORK, "cull.json"), JSON.stringify({
   source: SRC, sourceInput: resolvedSource.sourceLabel, sourceKind: resolvedSource.kind,
+  sourceImport: resolvedSource.importReport, sourceImportReport: resolvedSource.importReportPath,
   createdAt: new Date().toISOString(), strict: STRICT,
   stats: { total: recs.length, kept: kept.length, rejected: rejected.length, reasons: reasonCounts },
   days, photos: [...kept, ...rejected].map(clean),

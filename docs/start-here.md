@@ -2,7 +2,7 @@
 
 **You have thousands of trip photos and no time to choose? Keepsake does it for you.**
 
-Keepsake is a *skill*: a new ability you add to an AI assistant like Claude or ChatGPT. It looks at every photo in a folder. It throws out blurry photos, copies and screenshots, picks the best moments and designs an album. You get a PDF that is ready to print, and you can still change anything yourself.
+Keepsake is a *skill*: a new ability you add to a local, code-capable AI assistant like Claude Code or Codex. It reviews photos from a folder, ZIP or supported shared link. It filters blurry photos, copies and screenshots, helps choose the best moments and designs an album. You get a PDF and a local editor. Before printing, check the files against your print shop's requirements.
 
 You don't need to know code. You copy, paste and click "Allow".
 
@@ -39,6 +39,11 @@ You can give Keepsake your photos in four easy ways — **even without copying f
 2. **An Apple Photos / iCloud link (iPhone / Mac):** In the Photos app, open a **Shared Album** → in the **People** tab, turn on **Public Website** and copy the link (`https://www.icloud.com/sharedalbum/#...`).
 3. **A Google Drive folder link:** Right-click the folder in Google Drive → **Share** → set access to **Anyone with the link**, and copy the link.
 4. **A folder or `.zip` file on your computer:** Put the photos in a folder (for example `Pictures\New York 2025`) or keep them as a single `.zip` download.
+
+Shared links must already be accessible; do not change sharing permissions just
+for Keepsake without understanding who can view the photos. Apple iCloud Shared
+Album import has not yet been verified against a real shared link.
+For ZIP64 archives (usually over 4 GB), extract them first and use the folder.
 
 ---
 
@@ -119,15 +124,20 @@ A page opens in your browser with all the pages of the album:
 - Drag the scenes to change their order.
 - Click a photo, then **Replace photo**, to choose another photo from the trip.
 - Choose another layout for a page, or change the text.
+- In **Book style**, choose **Modern**, **Crafted** or **Gallery**. Positions and crops stay as you set them unless you explicitly choose to reset layouts.
 - Click **Save** to save, and **Export PDFs** to get a new PDF.
 
-Everything is saved. You can close it and come back later.
+Click **Save** before closing. Your saved project can be reopened later; the editor
+link only works while its local server is running.
 
 ---
 
 ## Step 7: Print it
 
-The `book` folder has two files for printing: **`interior.pdf`** (the pages) and **`cover.pdf`** (the cover). The size is 30 × 30 cm.
+The `book` folder has two print components: **`interior.pdf`** (the pages) and
+**`cover.pdf`** (front cover only). The default trim size is 30 × 30 cm; confirm your
+chosen size, bleed and page count with the printer. A hardcover needs the printer's
+own spine and back-cover template.
 
 Upload them to a photo-book printing service that accepts a ready PDF. Not sure what to do? Write to the assistant:
 

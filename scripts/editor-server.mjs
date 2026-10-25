@@ -193,6 +193,7 @@ export async function startEditorServer({
     ["/editor-decor.mjs", [path.join(here, "editor-decor.mjs"), "text/javascript; charset=utf-8"]],
     ["/editor-placement.mjs", [path.join(here, "editor-placement.mjs"), "text/javascript; charset=utf-8"]],
     ["/editor-layouts.mjs", [path.join(here, "editor-layouts.mjs"), "text/javascript; charset=utf-8"]],
+    ["/style-presets.mjs", [path.join(here, "style-presets.mjs"), "text/javascript; charset=utf-8"]],
     ["/font/Montserrat.ttf", [path.join(root, "assets", "fonts", "Montserrat.ttf"), "font/ttf"]],
     ["/font/Heebo.ttf", [path.join(root, "assets", "fonts", "Heebo.ttf"), "font/ttf"]],
   ]);

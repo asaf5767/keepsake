@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { DECOR_MODES, GRAPHICS, WASHES, buildSpreadDecor } from "./editor-decor.mjs";
+import { resolveAlbumStyle, stylePreset } from "./style-presets.mjs";
 
 export const PROJECT_KIND = "keepsake-editor-project";
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -94,6 +95,7 @@ export function albumFingerprint(album) {
     closingPhoto: album.closing?.photo,
     ...(album.showHeadings === false ? { showHeadings: false } : {}),
     ...(album.callouts === true ? { callouts: true } : {}),
+    ...(album.stylePreset !== undefined ? { stylePreset: album.stylePreset } : {}),
     scenes,
     photoSettings: Object.fromEntries([...referenced].sort().map((code) => [code, photoSettings[code] || null])),
   };
@@ -122,6 +124,8 @@ function geometry(album) {
 }
 
 export function createEditorProject({ album, layout, albumPath = "album.json" }) {
+  const sourceFingerprint = albumFingerprint(album);
+  album = resolveAlbumStyle(album);
   if ((album.chapterStyle || "compact") !== "compact") throw new Error("The local editor supports the compact design.");
   const definitions = sceneDefinitions(album);
   const evidence = new Map((layout.scenes || []).map((scene) => [scene.id, scene]));
@@ -163,7 +167,7 @@ export function createEditorProject({ album, layout, albumPath = "album.json" })
       recipe: scene.recipe || "custom",
       frames: baseFrames,
       texts: baseTexts,
-      spec,
+      spec: { ...spec, frameMat: album.stylePreset === undefined ? undefined : stylePreset(album.stylePreset).frameMat },
       direction: album.direction || "ltr",
       decor: decorMode,
       callouts: album.callouts === true,
@@ -207,12 +211,13 @@ export function createEditorProject({ album, layout, albumPath = "album.json" })
     updatedAt: now,
     source: {
       album: path.basename(albumPath),
-      fingerprint: albumFingerprint(album),
+      fingerprint: sourceFingerprint,
     },
     book: {
       title: album.title || "",
       subtitle: album.subtitle || "",
       theme: album.theme || "white",
+      ...(album.stylePreset !== undefined ? { stylePreset: album.stylePreset } : {}),
       decor: decorMode,
       showHeadings: album.showHeadings !== false,
       callouts: album.callouts === true,
@@ -240,6 +245,7 @@ export function validateEditorProject(project, { album, photoCodes } = {}) {
   if (!Number.isInteger(project.revision) || project.revision < 0) throw new Error("Project revision must be a nonnegative integer.");
   if (!project.book || !["white", "cream", "dark"].includes(project.book.theme)) throw new Error("Project theme is invalid.");
   if (project.book.decor !== undefined && !DECOR_MODES.includes(project.book.decor)) throw new Error("Project decor mode is invalid.");
+  if (project.book.stylePreset !== undefined) stylePreset(project.book.stylePreset);
   for (const key of ["showHeadings", "callouts"]) {
     if (project.book[key] !== undefined && typeof project.book[key] !== "boolean") throw new Error(`Project ${key} must be a boolean.`);
   }

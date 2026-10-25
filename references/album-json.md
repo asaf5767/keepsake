@@ -8,6 +8,7 @@ Lives in the work folder next to `cull.json`. `pick.mjs` writes a first version 
   "subtitle": "Four days by the Tagus",
   "author": "Assaf",
   "chapterStyle": "compact",
+  "stylePreset": "crafted",
   "showHeadings": false,
   "callouts": false,
   "cover": { "photos": ["P012", "P018", "P038"] },
@@ -54,6 +55,7 @@ Lives in the work folder next to `cull.json`. `pick.mjs` writes a first version 
 |---|---|---|
 | `title`, `subtitle`, `author` | — | Title page and cover. `subtitle` falls back to the date range. |
 | `dates` | from EXIF | Overrides the date line ("10 May – 13 May 2025"). |
+| `stylePreset` | omitted for existing books | `modern`, `crafted` or `gallery`: coordinated paper, decor, photo borders and safe-layout preferences. Explicit `theme`, `decor`, `font`, `showHeadings` and `callouts` override its defaults. Presets default to no generated headings/callouts; RTL uses Heebo. |
 | `theme` | `white` | `white`, `cream` or `dark`: base paper colour. |
 | `decor` | `crafted` | `crafted` adds subtle watercolor page washes (`sky`, `rose`, `sand`, `sage`, `lavender`), thin white photo borders on tinted pages, vector ornaments/badges and optional script callouts. Set `"none"` for plain paper only. |
 | `showHeadings` | `true` for existing manifests; new drafts use `false` | `false` hides printed scene headings/dates and frees their photo space. Internal labels remain editable. |
@@ -75,6 +77,28 @@ Lives in the work folder next to `cull.json`. `pick.mjs` writes a first version 
 | `cull` | `cull.json` | Path to the cull output, relative to album.json. |
 | `order` | `date` | Photos in each chapter are sorted by date, so codes can be added anywhere in a chapter's list. `as-listed` keeps your order instead. |
 | `photoSettings` | none | Per-photo framing settings shared by cover, interior and ending. Item-level settings override them. |
+
+## Built-in styles
+
+| Preset | Paper and type | Photo treatment |
+|---|---|---|
+| `modern` | White; Montserrat (Heebo for RTL) | Borderless photos, tight grids, no washes or generated ornaments |
+| `crafted` | Cream; Montserrat (Heebo for RTL) | Watercolor washes, thin white borders, subtle ornaments and layered/photo-led layouts |
+| `gallery` | Dark; Montserrat (Heebo for RTL) | White photo borders, restrained photo-led/facing compositions, no generated ornaments |
+
+All styles use the same reviewed subject protection and print geometry.
+They prefer compatible layouts, not unsafe crops. `scene.layout` remains an
+explicit safe override. For the full preset layout treatment, use explicit scenes.
+Legacy automatic chapters keep their existing planning logic.
+The preset is recorded in `layout.json` and `report.md`.
+
+In **Book style**, applying a preset keeps existing photo positions, crops,
+wording and scene order. It replaces washes, generated ornaments and photo borders;
+custom graphics remain. **Also reset photo layouts and crops** is an explicit
+opt-in reflow and preserves photo choices and text. Review the result before export.
+Changing paper, type or decor separately marks the book as a custom design.
+Adding a preset to a manifest changes its fingerprint: do not silently reuse an
+older project; apply a style inside the existing editor instead.
 
 ## Cover
 

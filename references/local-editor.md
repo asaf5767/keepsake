@@ -65,13 +65,28 @@ The production UI uses the selected Storyboard workflow:
 - move and resize photo, graphic or text objects across both pages;
 - use subject-aware, whole-photo or manual framing;
 - edit titles and notes, or add another text object;
-- change white, cream or dark paper and Montserrat/Heebo type;
+- apply Modern, Crafted or Gallery in **Book style**, then fine-tune paper and type;
 - mark a spread reviewed;
 - undo, save, close and reopen;
 - export the reading and print PDFs.
 
 The cover, opening and closing keep their existing production templates in this
 version. Book title, subtitle, paper and type still update them at export.
+
+## Ready-made styles
+
+**Book style** offers coordinated Modern (white, borderless), Crafted (cream,
+watercolor and thin borders), and Gallery (dark, white borders) looks.
+Applying one replaces washes, generated ornaments, borders and type, while
+preserving photo positions, crops, wording, custom graphics and scene order.
+It marks every spread as needing review and can be undone before saving.
+
+Leave **Also reset photo layouts and crops** unchecked to preserve manual placement.
+Checking it explicitly reflows the same photos using safe preset layout preferences.
+If no safe layout exists, nothing changes and an error explains the problem.
+Text notes stay in their existing boxes, so check their fit after a layout reset.
+Changing paper, type or decor separately clears the preset label.
+The saved project and exported `layout.json` record the chosen preset.
 
 ## Export
 

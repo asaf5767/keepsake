@@ -321,7 +321,7 @@ export function buildSpreadDecor({
   if (decor === "none") {
     return {
       wash: { left: "none", right: "none" },
-      frames: frames.map((f) => ({ ...f, mat: !!f.mat })),
+      frames: frames.map((f) => ({ ...f, mat: spec.frameMat ?? !!f.mat })),
       texts,
       graphics: [],
     };
@@ -359,7 +359,7 @@ export function buildSpreadDecor({
     const isInset = recipe === "overlap-story" && frameIdx === frames.length - 1;
     return {
       ...frame,
-      mat: frame.mat !== undefined ? !!frame.mat : (onWashedSide || isInset),
+      mat: spec.frameMat ?? (frame.mat !== undefined ? !!frame.mat : (onWashedSide || isInset)),
     };
   });
 

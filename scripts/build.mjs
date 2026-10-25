@@ -18,6 +18,7 @@ import { DECOR_MODES, GRAPHICS, buildSpreadDecor, graphicSvgMarkup, washSvgMarku
 import { albumFingerprint, loadEditorProject } from "./editor-project.mjs";
 import { placementWarnings, protectedBounds, resolveFramePlacement } from "./editor-placement.mjs";
 import { makeEditorLayouts } from "./editor-layouts.mjs";
+import { PAPER_THEMES, presetLayoutPenalty, resolveAlbumStyle, stylePreset } from "./style-presets.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FONTS = path.join(HERE, "..", "assets", "fonts");
@@ -35,7 +36,7 @@ const photoCodes = new Set(cull.photos.map((photo) => photo.code));
 const editorProject = PROJECT_PATH
   ? await loadEditorProject(PROJECT_PATH, { album: sourceAlbum, photoCodes })
   : null;
-const album = structuredClone(sourceAlbum);
+const album = resolveAlbumStyle(structuredClone(sourceAlbum));
 if (editorProject) {
   album.title = editorProject.book.title;
   album.subtitle = editorProject.book.subtitle;
@@ -44,7 +45,9 @@ if (editorProject) {
   album.font = editorProject.book.font;
   album.showHeadings = editorProject.book.showHeadings ?? album.showHeadings;
   album.callouts = editorProject.book.callouts ?? album.callouts;
+  album.stylePreset = editorProject.book.stylePreset;
 }
+const PRESET = album.stylePreset === undefined ? null : stylePreset(album.stylePreset);
 const DECOR_MODE = DECOR_MODES.includes(album.decor) ? album.decor : "crafted";
 const SHOW_HEADINGS = album.showHeadings !== false;
 const CALLOUTS = album.callouts === true;
@@ -81,12 +84,8 @@ if (![TW, TH, M, G].every((v) => Number.isFinite(v) && v > 0) ||
 }
 const FOLIOS = album.folios !== false;
 const DPI_OK = 240, DPI_WARN = 200, DPI_FAIL = 150;
-const THEMES = {
-  white: { bg: "#ffffff", ink: "#141414", muted: "#7c7c7c" },
-  cream: { bg: "#f6f2ea", ink: "#1b1a18", muted: "#857e72" },
-  dark: { bg: "#121212", ink: "#f3f3f3", muted: "#9b9b9b" },
-};
-const theme = THEMES[album.theme] || THEMES.white;
+const paperTheme = PAPER_THEMES[album.theme] || PAPER_THEMES.white;
+const theme = { ...paperTheme, bg: paperTheme.paper };
 const BOOK_FONT = ["Montserrat", "Heebo"].includes(album.font)
   ? album.font
   : RTL ? "Heebo" : "Montserrat";
@@ -566,7 +565,7 @@ function planBook(scale) {
             const result = evalSpread(recipe.pages, scene.items);
             if (!result) continue;
             const repeatCost = (prev === rid ? 0.22 : 0) + 0.06 * (usage.get(rid) || 0);
-            const totalCost = result.cost + recipe.bias + repeatCost;
+            const totalCost = result.cost + recipe.bias + repeatCost + presetLayoutPenalty(album.stylePreset, rid);
             if (!selected || totalCost < selected.cost) {
               selected = { ...result, rid, cost: totalCost };
             }
@@ -578,6 +577,7 @@ function planBook(scale) {
           })), {
             pageWidth: W, pageHeight: H, bleed: B, margin: M, binding: IE, gutter: G,
             direction: RTL ? "rtl" : "ltr", decor: DECOR_MODE, callouts: CALLOUTS,
+            frameMat: PRESET?.frameMat,
             showHeadings: SHOW_HEADINGS, spreadIndex: [...usage.values()].reduce((a, b) => a + b, 0),
           });
           if (scene.layout && !options.some(option => option.key === scene.layout)) {
@@ -585,13 +585,14 @@ function planBook(scale) {
           }
           for (const option of options) {
             if (!option.available || (!scene.layout &&
-                (!["framed-haven", "overlap-story", "center-note-grid"].includes(option.key) ||
+                ((!PRESET && !["framed-haven", "overlap-story", "center-note-grid"].includes(option.key)) ||
+                (option.titleTile && !SHOW_HEADINGS) ||
                 (option.key === "center-note-grid" && (!SHOW_HEADINGS || !scene.title))))) continue;
             if (scene.layout && option.key !== scene.layout) continue;
             const maxArea = Math.max(...option.frames.map(frame => frame.box.w * frame.box.h));
             const main = option.frames.find(frame => frame.role === "main");
             if (!scene.layout && main && main.box.w * main.box.h < maxArea * 0.9) continue;
-            const cost = 2 * option.cost + 0.2 + (prev === option.key ? 0.22 : 0) +
+            const cost = 2 * option.cost + 0.2 + presetLayoutPenalty(album.stylePreset, option.key) + (prev === option.key ? 0.22 : 0) +
               0.06 * (usage.get(option.key) || 0);
             if (!scene.layout && selected && cost >= selected.cost) continue;
             const centered = option.key === "center-note-grid";
@@ -1189,7 +1190,7 @@ for (let n = 2; n < totalPages; n += 2)
 function coverHtml() {
   const ttl = album.title || "", sub = album.subtitle || dateLine;
   const style = coverSpec.style || (PHOTO_FIRST ? (coverItems.length >= 3 ? "collage" : "photo") : (coverItems.length >= 3 ? "grid" : "color"));
-  const craftedCover = PHOTO_FIRST && DECOR_MODE === "crafted" && theme === THEMES.white;
+  const craftedCover = PHOTO_FIRST && DECOR_MODE === "crafted" && paperTheme === PAPER_THEMES.white;
   const coverWash = craftedCover ? pageWashHtml(coverSpec.wash || "sky", "left") : "";
   const coverMat = craftedCover ? "mat" : "";
   if (style === "collage") {
@@ -1348,7 +1349,7 @@ if (!editorProject && PHOTO_FIRST) {
           recipe: spread.rid,
           frames,
           texts: baseTexts,
-          spec: { pageWidth: W, pageHeight: H, bleed: B, margin: M, binding: IE, gutter: G },
+          spec: { pageWidth: W, pageHeight: H, bleed: B, margin: M, binding: IE, gutter: G, frameMat: PRESET?.frameMat },
           direction: RTL ? "rtl" : "ltr",
           decor: DECOR_MODE,
           callouts: CALLOUTS,
@@ -1644,6 +1645,8 @@ if (editorProject) {
 }
 await fs.writeFile(path.join(OUT, "layout.json"), JSON.stringify({
   style: CHAPTER_STYLE, pageCount: totalPages, trimMm: [TW, TH], bleedMm: B,
+  stylePreset: album.stylePreset || null,
+  theme: album.theme || "white", font: BOOK_FONT,
   sourceFingerprint: albumFingerprint(sourceAlbum),
   photoCount: used.size, scenes: sceneEvidence, coverage: pageCoverage, placements: usages,
   editorProject: editorProject ? {
@@ -1669,6 +1672,7 @@ const report = `# Print report — ${album.title}
 | Interior pages | ${totalPages} (multiple of ${MULTIPLE}, minimum ${MIN_PAGES}) |
 | Density | ${DENSITY} (about ${(DENS.target * scale).toFixed(1)} photos per spread) |
 | Chapter openers | ${CHAPTER_STYLE} |
+| Style preset | ${PRESET?.name || "Custom / existing design"} |
 | Photos placed | ${used.size} (${unusedKeep} kept photos not used) |
 | Files | album.pdf ${await size("album.pdf")} (reading copy with cover); interior.pdf ${await size("interior.pdf")}, cover.pdf ${await size("cover.pdf")} (print components) |
 
